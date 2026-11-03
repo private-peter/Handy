@@ -819,7 +819,17 @@
       "keyboardImplementation": {
         "title": "מימוש מקלדת",
         "description": "בחר את מנגנון קיצורי המקלדת.",
-        "bindingsReset": "קיצורי המקלדת לא היו תואמים ואופסו לברירות המחדל"
+        "bindingsReset": "קיצורי המקלדת לא היו תואמים ואופסו לברירות המחדל",
+        "portalLabel": "Desktop Portal",
+        "portalDescription": "Your desktop approves the shortcuts and delivers press and release events for hold-to-talk.",
+        "portalSetup": "Set Up Shortcuts",
+        "portalPasteSetup": "Set Up Pasting",
+        "portalPasteStop": "Stop Pasting",
+        "portalPasteDescription": "Clipboard pasting needs separate permission to control the keyboard. Set it up before testing; access ends when you stop pasting or quit Handy.",
+        "portalPasteSetupComplete": "Pasting setup completed.",
+        "portalPasteStopped": "Handy's paste session closed.",
+        "portalPasteSetupFailed": "Could Not Set Up Pasting",
+        "portalPasteStopFailed": "Could Not Stop Pasting"
       },
       "pasteDelay": {
         "title": "השהיית הדבקה (לפני)",
@@ -951,7 +961,9 @@
     "filePostProcessFailedTitle": "תומלל ללא עיבוד משלים",
     "filePostProcessFailed": "העיבוד המשלים לא הסתיים, ולכן התמלול נשמר כפי שהוא.",
     "fileTranscriptionFailedTitle": "תמלול הקובץ נכשל",
-    "transcriptionFailedTitle": "התמלול נכשל"
+    "transcriptionFailedTitle": "התמלול נכשל",
+    "shortcutRegistrationFailedTitle": "Global Shortcuts Unavailable",
+    "shortcutRegistrationFailed": "Check your desktop's shortcut permissions, then use Set Up Shortcuts in Advanced settings to try again."
   },
   "notices": {
     "errorOne": "{{n}} שגיאה",

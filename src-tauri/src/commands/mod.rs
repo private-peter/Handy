@@ -177,7 +177,14 @@ pub struct ShortcutsInitialized;
 /// This is idempotent - calling it multiple times is safe.
 #[specta::specta]
 #[tauri::command]
-pub fn initialize_shortcuts(app: AppHandle) -> Result<(), String> {
+pub async fn initialize_shortcuts(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || initialize_shortcuts_inner(app))
+        .await
+        .map_err(|error| format!("Shortcut initialization task failed: {error}"))?
+}
+
+fn initialize_shortcuts_inner(app: AppHandle) -> Result<(), String> {
+    let _configuration = crate::shortcut::lock_configuration();
     // Check if already initialized
     if app.try_state::<ShortcutsInitialized>().is_some() {
         log::debug!("Shortcuts already initialized");
@@ -185,7 +192,7 @@ pub fn initialize_shortcuts(app: AppHandle) -> Result<(), String> {
     }
 
     // Initialize shortcuts
-    crate::shortcut::init_shortcuts(&app);
+    crate::shortcut::init_shortcuts(&app)?;
 
     // Mark as initialized before reconciling the macOS Secure Input fallback.
     app.manage(ShortcutsInitialized);

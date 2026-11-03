@@ -819,7 +819,17 @@
       "keyboardImplementation": {
         "title": "Реалізація клавіатури",
         "description": "Оберіть бекенд для клавіатурних скорочень.",
-        "bindingsReset": "Клавіатурні скорочення були несумісні та скинуті до значень за замовчуванням"
+        "bindingsReset": "Клавіатурні скорочення були несумісні та скинуті до значень за замовчуванням",
+        "portalLabel": "Desktop Portal",
+        "portalDescription": "Your desktop approves the shortcuts and delivers press and release events for hold-to-talk.",
+        "portalSetup": "Set Up Shortcuts",
+        "portalPasteSetup": "Set Up Pasting",
+        "portalPasteStop": "Stop Pasting",
+        "portalPasteDescription": "Clipboard pasting needs separate permission to control the keyboard. Set it up before testing; access ends when you stop pasting or quit Handy.",
+        "portalPasteSetupComplete": "Pasting setup completed.",
+        "portalPasteStopped": "Handy's paste session closed.",
+        "portalPasteSetupFailed": "Could Not Set Up Pasting",
+        "portalPasteStopFailed": "Could Not Stop Pasting"
       },
       "pasteDelay": {
         "title": "Затримка вставки (до)",
@@ -951,7 +961,9 @@
     "filePostProcessFailedTitle": "Розшифровано без постобробки",
     "filePostProcessFailed": "Постобробка не завершилася, тому розшифровку збережено як є.",
     "fileTranscriptionFailedTitle": "Помилка транскрипції файлу",
-    "transcriptionFailedTitle": "Помилка транскрипції"
+    "transcriptionFailedTitle": "Помилка транскрипції",
+    "shortcutRegistrationFailedTitle": "Global Shortcuts Unavailable",
+    "shortcutRegistrationFailed": "Check your desktop's shortcut permissions, then use Set Up Shortcuts in Advanced settings to try again."
   },
   "notices": {
     "errorOne": "{{n}} помилка",

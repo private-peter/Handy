@@ -1,7 +1,7 @@
 use crate::input::{self, EnigoState};
-#[cfg(target_os = "linux")]
-use crate::settings::TypingTool;
 use crate::settings::{get_settings, AutoSubmitKey, ClipboardHandling, PasteMethod};
+#[cfg(target_os = "linux")]
+use crate::settings::{KeyboardImplementation, TypingTool};
 use enigo::{Direction, Enigo, Key, Keyboard};
 use log::info;
 use std::process::Command;
@@ -18,6 +18,14 @@ use crate::utils::{is_gnome_wayland, is_kde_wayland, is_wayland};
 /// Serializes pastes: overlapping ones would restore each other's transcript as
 /// the user's clipboard. Only taken by `paste`, which never runs on the main thread.
 static PASTE_LOCK: Mutex<()> = Mutex::new(());
+
+/// Consent must not interrupt clipboard delivery or wait behind an active paste.
+#[cfg(target_os = "linux")]
+pub(crate) fn lock_idle_output() -> Result<std::sync::MutexGuard<'static, ()>, String> {
+    PASTE_LOCK
+        .try_lock()
+        .map_err(|_| "Finish the current paste before setting up pasting".into())
+}
 
 /// Runs `f` with the shared Enigo on the main thread (macOS TIS APIs require it)
 /// and waits for the result. Runs inline if already on the main thread, so no deadlock.
@@ -77,6 +85,7 @@ fn paste_via_clipboard(
     paste_method: &PasteMethod,
     paste_delay_ms: u64,
     paste_delay_after_ms: u64,
+    #[cfg(target_os = "linux")] portal_input_enabled: bool,
 ) -> Result<(), String> {
     let clipboard = app_handle.clipboard();
     let saved_text = clipboard.read_text().ok().filter(|t| !t.is_empty());
@@ -99,7 +108,14 @@ fn paste_via_clipboard(
     let paste_result = (|| -> Result<(), String> {
         // Send paste key combo
         #[cfg(target_os = "linux")]
-        let key_combo_sent = try_send_key_combo_linux(paste_method)?;
+        let key_combo_sent = if portal_input_enabled {
+            // Native, keyboard-only session explicitly approved before dictation.
+            // No prompt or X11/raw-input fallback during output.
+            crate::portal_input::send_paste(*paste_method)?;
+            true
+        } else {
+            try_send_key_combo_linux(paste_method)?
+        };
 
         #[cfg(not(target_os = "linux"))]
         let key_combo_sent = false;
@@ -825,6 +841,9 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
     let paste_method = settings.paste_method;
     let paste_delay_ms = settings.paste_delay_ms;
     let paste_delay_after_ms = settings.paste_delay_after_ms;
+    #[cfg(target_os = "linux")]
+    let portal_input_enabled =
+        is_wayland() && settings.keyboard_implementation == KeyboardImplementation::Portal;
 
     // Append trailing space if setting is enabled
     let text = if settings.append_trailing_space {
@@ -844,6 +863,12 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
             info!("PasteMethod::None selected - skipping paste action");
         }
         PasteMethod::Direct => {
+            #[cfg(target_os = "linux")]
+            if portal_input_enabled {
+                return Err(
+                    "Desktop Portal pasting requires Ctrl+V, Ctrl+Shift+V, or Shift+Insert".into(),
+                );
+            }
             paste_direct(
                 &text,
                 &app_handle,
@@ -890,6 +915,8 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
                 &paste_method,
                 paste_delay_ms,
                 paste_delay_after_ms,
+                #[cfg(target_os = "linux")]
+                portal_input_enabled,
             )?
         }
         PasteMethod::ExternalScript => {
@@ -905,9 +932,19 @@ pub fn paste(text: String, app_handle: AppHandle) -> Result<(), String> {
     if should_send_auto_submit(settings.auto_submit, paste_method) {
         std::thread::sleep(Duration::from_millis(50));
         let auto_submit_key = settings.auto_submit_key;
-        if let Err(error) = with_enigo(&app_handle, move |enigo| {
+        #[cfg(target_os = "linux")]
+        let submit_result = if portal_input_enabled {
+            crate::portal_input::send_submit(auto_submit_key)
+        } else {
+            with_enigo(&app_handle, move |enigo| {
+                send_return_key(enigo, auto_submit_key)
+            })
+        };
+        #[cfg(not(target_os = "linux"))]
+        let submit_result = with_enigo(&app_handle, move |enigo| {
             send_return_key(enigo, auto_submit_key)
-        }) {
+        });
+        if let Err(error) = submit_result {
             log::warn!("Paste succeeded, but auto-submit failed: {error}");
         }
     }

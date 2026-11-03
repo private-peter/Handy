@@ -477,6 +477,24 @@ async changeKeyboardImplementationSetting(implementation: string) : Promise<Resu
     else return { status: "error", error: e  as any };
 }
 },
+/** Request keyboard-only paste permission before dictation. */
+async setupPortalPasting() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("setup_portal_pasting") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e as any };
+}
+},
+/** Close only Handy's native paste session. */
+async stopPortalPasting() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("stop_portal_pasting") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e as any };
+}
+},
 /**
  * Get the current keyboard implementation
  */
@@ -1236,7 +1254,7 @@ export type KeyboardDiagnosticReport = { secure_input_enabled: boolean; culprit_
  * Counts only — key identity is deliberately never captured.
  */
 key_down: number; key_up: number; flags_changed: number; mouse: number; duration_ms: number }
-export type KeyboardImplementation = "tauri" | "handy_keys" | 
+export type KeyboardImplementation = "tauri" | "handy_keys" | "portal" |
 /**
  * No built-in global shortcuts; trigger Handy via CLI flags or signals
  * (e.g. from a Wayland compositor keybinding).
@@ -1337,7 +1355,7 @@ detail: string | null }
 /**
  * The frontend maps each code to its text in `src/lib/notices.ts`.
  */
-export type NoticeCode = "TranscriptionFailed" | "PasteFailed" | "NoMicrophone" | "MicPermissionDenied" | "RecordingFailed" | "ModelLoadFailed" | "PostProcessFailed" | "FileTranscriptionFailed" | "FilePostProcessFailed"
+export type NoticeCode = "TranscriptionFailed" | "PasteFailed" | "NoMicrophone" | "MicPermissionDenied" | "RecordingFailed" | "ModelLoadFailed" | "PostProcessFailed" | "FileTranscriptionFailed" | "FilePostProcessFailed" | "ShortcutRegistrationFailed"
 export type NoticeLevel = 
 /**
  * Nothing came out, or Handy can't do its job.
@@ -1352,7 +1370,7 @@ export type NoticeLevel =
  * overlay: a file job finishes while the user is doing something else, and
  * `Model` is a switch the user made in Settings or the tray.
  */
-export type NoticeSource = "dictation" | "file" | "model"
+export type NoticeSource = "dictation" | "file" | "model" | "shortcuts"
 export type NoticesChanged = { 
 /**
  * Every active notice, newest first.

@@ -56,12 +56,18 @@ enum ManagerCommand {
     Shutdown,
 }
 
-/// State for the handy-keys shortcut manager
+/// A live manager owns the native device handles on its thread.
+struct ManagerActor {
+    command_sender: Sender<ManagerCommand>,
+    thread_handle: JoinHandle<()>,
+}
+
+/// Permanently managed state. Backend switching takes/stops the actor instead
+/// of removing Tauri state, which would invalidate outstanding State references.
 pub struct HandyKeysState {
-    /// Channel to send commands to the manager thread (wrapped in Mutex for Sync)
-    command_sender: Mutex<Sender<ManagerCommand>>,
-    /// Handle to the manager thread (wrapped in Mutex for Sync, allows proper join on drop)
-    thread_handle: Mutex<Option<JoinHandle<()>>>,
+    /// Serializes startup, capture startup, and shutdown.
+    lifecycle: Mutex<()>,
+    manager: Mutex<Option<ManagerActor>>,
     /// Recording listener for UI key capture (only active during recording)
     recording_listener: Mutex<Option<KeyboardListener>>,
     /// Flag indicating if we're in recording mode
@@ -70,6 +76,7 @@ pub struct HandyKeysState {
     recording_binding_id: Mutex<Option<String>>,
     /// Flag to stop recording loop
     recording_running: Arc<AtomicBool>,
+    recording_thread: Mutex<Option<JoinHandle<()>>>,
 }
 
 /// Key event sent to frontend during recording mode
@@ -86,29 +93,73 @@ pub struct FrontendKeyEvent {
 }
 
 impl HandyKeysState {
-    /// Create a new HandyKeysState
-    pub fn new(app: AppHandle) -> Result<Self, String> {
-        let (cmd_tx, cmd_rx) = mpsc::channel::<ManagerCommand>();
-
-        // Start the manager thread
-        let app_clone = app.clone();
-        // Create the manager here rather than inside the thread so a startup
-        // failure (e.g. missing Accessibility permission) reaches the caller,
-        // which can then fall back to the Tauri implementation.
-        let manager = HotkeyManager::new_with_blocking()
-            .map_err(|e| format!("Failed to create HotkeyManager: {e}"))?;
-        let thread_handle = thread::spawn(move || {
-            Self::manager_thread(cmd_rx, app_clone, manager);
-        });
-
-        Ok(Self {
-            command_sender: Mutex::new(cmd_tx),
-            thread_handle: Mutex::new(Some(thread_handle)),
+    /// Inactive state can safely be managed before any input devices are opened.
+    fn new() -> Self {
+        Self {
+            lifecycle: Mutex::new(()),
+            manager: Mutex::new(None),
             recording_listener: Mutex::new(None),
             is_recording: AtomicBool::new(false),
             recording_binding_id: Mutex::new(None),
             recording_running: Arc::new(AtomicBool::new(false)),
-        })
+            recording_thread: Mutex::new(None),
+        }
+    }
+
+    /// Whether the native manager is alive. State existence alone is not enough
+    /// after switching away from this backend.
+    pub fn is_running(&self) -> bool {
+        self.manager
+            .lock()
+            .map(|manager| {
+                manager
+                    .as_ref()
+                    .is_some_and(|actor| !actor.thread_handle.is_finished())
+            })
+            .unwrap_or(false)
+    }
+
+    /// Called under lifecycle so initialization cannot race cleanup or capture.
+    fn start_manager(&self, app: AppHandle) -> Result<bool, String> {
+        let mut slot = self
+            .manager
+            .lock()
+            .map_err(|_| "Failed to lock native manager")?;
+        if let Some(actor) = slot.as_ref() {
+            if !actor.thread_handle.is_finished() {
+                return Ok(false);
+            }
+        }
+        if let Some(actor) = slot.take() {
+            let _ = actor.thread_handle.join();
+        }
+        // Permission failures reach the caller; no managed state is replaced.
+        let manager = HotkeyManager::new_with_blocking()
+            .map_err(|e| format!("Failed to create HotkeyManager: {e}"))?;
+        let (command_sender, command_receiver) = mpsc::channel();
+        let thread_handle = thread::spawn(move || {
+            Self::manager_thread(command_receiver, app, manager);
+        });
+        *slot = Some(ManagerActor {
+            command_sender,
+            thread_handle,
+        });
+        Ok(true)
+    }
+
+    /// Stop every native reader before another backend is selected.
+    fn shutdown(&self) -> Result<(), String> {
+        let _lifecycle = self.lifecycle.lock().unwrap_or_else(|e| e.into_inner());
+        self.stop_recording_inner();
+        let mut slot = self.manager.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(actor) = slot.take() {
+            let _ = actor.command_sender.send(ManagerCommand::Shutdown);
+            actor
+                .thread_handle
+                .join()
+                .map_err(|_| "Native shortcut manager panicked during shutdown")?;
+        }
+        Ok(())
     }
 
     /// The main manager thread - owns the HotkeyManager and processes commands
@@ -222,41 +273,55 @@ impl HandyKeysState {
         Ok(())
     }
 
-    /// Register a shortcut binding
+    /// Register a shortcut binding. Holding the actor lock until its reply
+    /// prevents shutdown/restart from overtaking an in-flight registration.
     pub fn register(&self, binding: &ShortcutBinding) -> Result<(), String> {
-        let (tx, rx) = mpsc::channel();
-        self.command_sender
+        let slot = self
+            .manager
             .lock()
-            .map_err(|_| "Failed to lock command_sender")?
+            .map_err(|_| "Failed to lock native manager")?;
+        let actor = slot.as_ref().ok_or("Handy Keys is not running")?;
+        let (tx, rx) = mpsc::channel();
+        actor
+            .command_sender
             .send(ManagerCommand::Register {
                 binding_id: binding.id.clone(),
                 hotkey_string: binding.current_binding.clone(),
                 response: tx,
             })
             .map_err(|_| "Failed to send register command")?;
-
         rx.recv()
             .map_err(|_| "Failed to receive register response")?
     }
 
-    /// Unregister a shortcut binding
+    /// Unregister a shortcut binding.
     pub fn unregister(&self, binding: &ShortcutBinding) -> Result<(), String> {
-        let (tx, rx) = mpsc::channel();
-        self.command_sender
+        let slot = self
+            .manager
             .lock()
-            .map_err(|_| "Failed to lock command_sender")?
+            .map_err(|_| "Failed to lock native manager")?;
+        let actor = slot.as_ref().ok_or("Handy Keys is not running")?;
+        let (tx, rx) = mpsc::channel();
+        actor
+            .command_sender
             .send(ManagerCommand::Unregister {
                 binding_id: binding.id.clone(),
                 response: tx,
             })
             .map_err(|_| "Failed to send unregister command")?;
-
         rx.recv()
             .map_err(|_| "Failed to receive unregister response")?
     }
 
     /// Start recording mode for a specific binding
     pub fn start_recording(&self, app: &AppHandle, binding_id: String) -> Result<(), String> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .map_err(|_| "Failed to lock native lifecycle")?;
+        if !self.is_running() {
+            return Err("Handy Keys is not running".into());
+        }
         if self.is_recording.load(Ordering::SeqCst) {
             return Err("Already recording".into());
         }
@@ -286,9 +351,13 @@ impl HandyKeysState {
         // Start a thread to emit key events to the frontend
         let app_clone = app.clone();
         let recording_running = Arc::clone(&self.recording_running);
-        thread::spawn(move || {
+        let handle = thread::spawn(move || {
             Self::recording_loop(app_clone, recording_running);
         });
+        *self
+            .recording_thread
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(handle);
 
         debug!("Started handy-keys recording mode");
         Ok(())
@@ -330,48 +399,43 @@ impl HandyKeysState {
         debug!("Recording loop ended");
     }
 
-    /// Stop recording mode
+    /// Stop recording mode. Cleanup joins the old reader so a new capture
+    /// cannot accidentally revive its shared running flag.
     pub fn stop_recording(&self) -> Result<(), String> {
+        let _lifecycle = self
+            .lifecycle
+            .lock()
+            .map_err(|_| "Failed to lock native lifecycle")?;
+        self.stop_recording_inner();
+        Ok(())
+    }
+
+    fn stop_recording_inner(&self) {
         self.is_recording.store(false, Ordering::SeqCst);
         self.recording_running.store(false, Ordering::SeqCst);
-
+        *self
+            .recording_listener
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .recording_binding_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        if let Some(handle) = self
+            .recording_thread
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
         {
-            let mut recording = self
-                .recording_listener
-                .lock()
-                .map_err(|_| "Failed to lock recording_listener")?;
-            *recording = None;
+            let _ = handle.join();
         }
-        {
-            let mut binding = self
-                .recording_binding_id
-                .lock()
-                .map_err(|_| "Failed to lock recording_binding_id")?;
-            *binding = None;
-        }
-
         debug!("Stopped handy-keys recording mode");
-        Ok(())
     }
 }
 
 impl Drop for HandyKeysState {
     fn drop(&mut self) {
-        // Signal recording to stop
-        self.recording_running.store(false, Ordering::SeqCst);
-        self.is_recording.store(false, Ordering::SeqCst);
-
-        // Send shutdown command
-        if let Ok(sender) = self.command_sender.lock() {
-            let _ = sender.send(ManagerCommand::Shutdown);
-        }
-
-        // Wait for the manager thread to finish
-        if let Ok(mut handle) = self.thread_handle.lock() {
-            if let Some(h) = handle.take() {
-                let _ = h.join();
-            }
-        }
+        let _ = self.shutdown();
     }
 }
 
@@ -417,40 +481,57 @@ pub fn validate_shortcut(raw: &str) -> Result<(), String> {
         .map_err(|e| format!("Invalid shortcut for HandyKeys: {}", e))
 }
 
-/// Initialize handy-keys shortcuts
+/// Initialize or restart the native backend without ever removing managed state.
 pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
-    let state = HandyKeysState::new(app.clone())?;
-
+    if app.try_state::<HandyKeysState>().is_none() {
+        // Manage an inactive value first: losing a concurrent manage race cannot
+        // create a second keyboard grab or leak a native reader.
+        app.manage(HandyKeysState::new());
+    }
+    let state = app.state::<HandyKeysState>();
+    let _lifecycle = state
+        .lifecycle
+        .lock()
+        .map_err(|_| "Failed to lock native lifecycle")?;
+    if !state.start_manager(app.clone())? {
+        return Ok(());
+    }
     let default_bindings = settings::get_default_settings().bindings;
     let user_settings = settings::load_or_create_app_settings(app);
-
-    // Register all bindings except cancel (which is dynamic)
     for (id, default_binding) in default_bindings {
-        if id == "cancel" {
+        if id == "cancel"
+            || (id == "transcribe_with_post_process" && !user_settings.post_process_enabled)
+        {
             continue;
         }
-        // Skip post-processing shortcut when the feature is disabled
-        if id == "transcribe_with_post_process" && !user_settings.post_process_enabled {
-            continue;
-        }
-
         let binding = user_settings
             .bindings
             .get(&id)
             .cloned()
             .unwrap_or(default_binding);
-
-        if let Err(e) = state.register(&binding) {
-            error!(
-                "Failed to register handy-keys shortcut {} during init: {}",
-                id, e
-            );
+        if let Err(error) = state.register(&binding) {
+            // The initialization caller can report/roll back a failed native
+            // startup. Do not leave device handles alive on partial failure.
+            let mut slot = state.manager.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(actor) = slot.take() {
+                let _ = actor.command_sender.send(ManagerCommand::Shutdown);
+                let _ = actor.thread_handle.join();
+            }
+            return Err(format!("Failed to register native shortcut {id}: {error}"));
         }
     }
-
-    app.manage(state);
     info!("handy-keys shortcuts initialized");
     Ok(())
+}
+
+/// Close native device handles in-place. State references remain valid across
+/// backend changes, including capture callbacks already in flight.
+pub fn cleanup_shortcuts(app: &AppHandle) {
+    if let Some(state) = app.try_state::<HandyKeysState>() {
+        if let Err(error) = state.shutdown() {
+            error!("Failed to stop native shortcut manager: {error}");
+        }
+    }
 }
 
 /// Register a shortcut
@@ -472,7 +553,14 @@ pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<
 /// Start key recording mode
 #[tauri::command]
 #[specta::specta]
-pub fn start_handy_keys_recording(app: AppHandle, binding_id: String) -> Result<(), String> {
+pub async fn start_handy_keys_recording(app: AppHandle, binding_id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || start_handy_keys_recording_inner(app, binding_id))
+        .await
+        .map_err(|error| format!("Shortcut capture task failed: {error}"))?
+}
+
+fn start_handy_keys_recording_inner(app: AppHandle, binding_id: String) -> Result<(), String> {
+    let _configuration = super::lock_configuration();
     let settings = get_settings(&app);
     if settings.keyboard_implementation != settings::KeyboardImplementation::HandyKeys {
         return Err("handy-keys is not the active keyboard implementation".into());
@@ -506,7 +594,14 @@ pub fn start_handy_keys_recording(app: AppHandle, binding_id: String) -> Result<
 /// Stop key recording mode
 #[tauri::command]
 #[specta::specta]
-pub fn stop_handy_keys_recording(app: AppHandle) -> Result<(), String> {
+pub async fn stop_handy_keys_recording(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || stop_handy_keys_recording_inner(app))
+        .await
+        .map_err(|error| format!("Shortcut capture task failed: {error}"))?
+}
+
+fn stop_handy_keys_recording_inner(app: AppHandle) -> Result<(), String> {
+    let _configuration = super::lock_configuration();
     let settings = get_settings(&app);
     if settings.keyboard_implementation != settings::KeyboardImplementation::HandyKeys {
         return Err("handy-keys is not the active keyboard implementation".into());
@@ -522,4 +617,56 @@ pub fn stop_handy_keys_recording(app: AppHandle) -> Result<(), String> {
     let result = state.stop_recording();
     super::resume_all_shortcuts(&app);
     result
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+
+    #[test]
+    fn shutdown_joins_actor_and_clears_native_state() {
+        let state = HandyKeysState::new();
+        let finished = Arc::new(AtomicBool::new(false));
+        let thread_finished = finished.clone();
+        let (command_sender, command_receiver) = mpsc::channel();
+        let thread_handle = thread::spawn(move || {
+            while let Ok(command) = command_receiver.recv() {
+                if matches!(command, ManagerCommand::Shutdown) {
+                    break;
+                }
+            }
+            thread_finished.store(true, Ordering::SeqCst);
+        });
+        *state.manager.lock().unwrap() = Some(ManagerActor {
+            command_sender,
+            thread_handle,
+        });
+        assert!(state.is_running());
+        state.shutdown().unwrap();
+        assert!(finished.load(Ordering::SeqCst));
+        assert!(!state.is_running());
+        assert!(!state.recording_running.load(Ordering::SeqCst));
+        // Multiple backend cleanup calls are harmless and open no devices.
+        state.shutdown().unwrap();
+    }
+
+    #[test]
+    fn inactive_managed_state_does_not_accept_commands_or_capture() {
+        let state = HandyKeysState::new();
+        let binding = ShortcutBinding {
+            id: "transcribe".into(),
+            name: "Transcribe".into(),
+            description: String::new(),
+            default_binding: "ctrl+space".into(),
+            current_binding: "ctrl+space".into(),
+        };
+        assert!(state
+            .register(&binding)
+            .unwrap_err()
+            .contains("not running"));
+        assert!(state
+            .unregister(&binding)
+            .unwrap_err()
+            .contains("not running"));
+    }
 }

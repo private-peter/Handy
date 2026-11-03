@@ -11,6 +11,8 @@
 
 mod handler;
 pub mod handy_keys;
+#[cfg(target_os = "linux")]
+pub mod portal_impl;
 pub mod tauri_impl;
 
 use log::{debug, error, info, warn};
@@ -31,8 +33,23 @@ use crate::tray;
 
 // Note: Commands are accessed via shortcut::handy_keys:: in lib.rs
 
+// Portal consent can wait for user interaction. Serialize shortcut mutations
+// on worker threads so startup, capture, and backend changes cannot race.
+static CONFIGURATION_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+// Setup and recording start are mutually exclusive. Starts use try_lock and
+// return false while consent is open, allowing the coordinator to stay idle.
+#[cfg(target_os = "linux")]
+pub(crate) static PORTAL_PASTE_SETUP_GATE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub(crate) fn lock_configuration() -> std::sync::MutexGuard<'static, ()> {
+    CONFIGURATION_LOCK
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+}
+
 /// Initialize shortcuts using the configured implementation
-pub fn init_shortcuts(app: &AppHandle) {
+pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
     let user_settings = settings::load_or_create_app_settings(app);
 
     // Check which implementation to use
@@ -54,10 +71,40 @@ pub fn init_shortcuts(app: &AppHandle) {
                 tauri_impl::init_shortcuts(app);
             }
         }
+        KeyboardImplementation::Portal => initialize_portal(app)?,
         KeyboardImplementation::None => {
             info!("Built-in keyboard shortcuts disabled; use CLI flags or signals");
         }
     }
+    Ok(())
+}
+
+/// Initialize only the selected portal backend; errors stay visible instead of
+/// falling back to a backend with different security or activation behavior.
+fn initialize_portal(app: &AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    let result = portal_impl::init_shortcuts(app);
+    #[cfg(not(target_os = "linux"))]
+    let result: Result<(), String> =
+        Err("Desktop Portal shortcuts are only available on Linux".into());
+    if let Err(ref message) = result {
+        report_portal_error(app, message);
+    } else {
+        crate::notices::clear(app, crate::notices::NoticeSource::Shortcuts);
+    }
+    result
+}
+
+fn report_portal_error(app: &AppHandle, message: &str) {
+    error!("Desktop Portal shortcuts unavailable: {}", message);
+    crate::notices::raise_without_overlay(
+        app,
+        crate::notices::Notice::new(
+            crate::notices::NoticeCode::ShortcutRegistrationFailed,
+            crate::notices::NoticeSource::Shortcuts,
+        )
+        .with_detail(message.to_owned()),
+    );
 }
 
 /// Whether the recording lifecycle currently wants the cancel shortcut.
@@ -139,6 +186,10 @@ pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<()
     match settings.keyboard_implementation {
         KeyboardImplementation::Tauri => tauri_impl::register_shortcut(app, binding),
         KeyboardImplementation::HandyKeys => handy_keys::register_shortcut(app, binding),
+        #[cfg(target_os = "linux")]
+        KeyboardImplementation::Portal => portal_impl::register_shortcut(app, binding),
+        #[cfg(not(target_os = "linux"))]
+        KeyboardImplementation::Portal => Err("Desktop Portal shortcuts require Linux".into()),
         KeyboardImplementation::None => Ok(()),
     }
 }
@@ -149,6 +200,10 @@ pub fn unregister_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<
     match settings.keyboard_implementation {
         KeyboardImplementation::Tauri => tauri_impl::unregister_shortcut(app, binding),
         KeyboardImplementation::HandyKeys => handy_keys::unregister_shortcut(app, binding),
+        #[cfg(target_os = "linux")]
+        KeyboardImplementation::Portal => portal_impl::unregister_shortcut(app, binding),
+        #[cfg(not(target_os = "linux"))]
+        KeyboardImplementation::Portal => Ok(()),
         KeyboardImplementation::None => Ok(()),
     }
 }
@@ -166,11 +221,22 @@ pub struct BindingResponse {
 
 #[tauri::command]
 #[specta::specta]
-pub fn change_binding(
+pub async fn change_binding(
     app: AppHandle,
     id: String,
     binding: String,
 ) -> Result<BindingResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || change_binding_inner(app, id, binding))
+        .await
+        .map_err(|error| format!("Shortcut update task failed: {error}"))?
+}
+
+fn change_binding_inner(
+    app: AppHandle,
+    id: String,
+    binding: String,
+) -> Result<BindingResponse, String> {
+    let _configuration = lock_configuration();
     // Reject empty bindings — every shortcut should have a value
     if binding.trim().is_empty() {
         return Err("Binding cannot be empty".to_string());
@@ -221,17 +287,22 @@ pub fn change_binding(
         }
     }
 
-    // Unregister the existing binding
-    if let Err(e) = unregister_shortcut(&app, binding_to_modify.clone()) {
-        let error_msg = format!("Failed to unregister shortcut: {}", e);
-        error!("change_binding error: {}", error_msg);
+    // A portal binding replacement is one atomic batch/session update, not
+    // separate unregister/register requests (which would show two dialogs).
+    if settings.keyboard_implementation != KeyboardImplementation::Portal {
+        if let Err(e) = unregister_shortcut(&app, binding_to_modify.clone()) {
+            let error_msg = format!("Failed to unregister shortcut: {}", e);
+            error!("change_binding error: {}", error_msg);
+        }
     }
 
     // Validate the new shortcut for the current keyboard implementation
     if let Err(e) = validate_shortcut_for_implementation(&binding, settings.keyboard_implementation)
     {
         warn!("change_binding validation error: {}", e);
-        restore_registration(&app, &binding_to_modify);
+        if settings.keyboard_implementation != KeyboardImplementation::Portal {
+            restore_registration(&app, &binding_to_modify);
+        }
         return Err(e);
     }
 
@@ -243,7 +314,9 @@ pub fn change_binding(
     if let Err(e) = register_shortcut(&app, updated_binding.clone()) {
         let error_msg = format!("Failed to register shortcut: {}", e);
         error!("change_binding error: {}", error_msg);
-        restore_registration(&app, &binding_to_modify);
+        if settings.keyboard_implementation != KeyboardImplementation::Portal {
+            restore_registration(&app, &binding_to_modify);
+        }
         return Ok(BindingResponse {
             success: false,
             binding: None,
@@ -251,11 +324,13 @@ pub fn change_binding(
         });
     }
 
-    // Update the binding in the settings
-    settings.bindings.insert(id, updated_binding.clone());
+    // Portal consent may have taken time. Merge only this binding into the
+    // latest settings so other changes made during the dialog are retained.
+    let mut latest_settings = settings::get_settings(&app);
+    latest_settings.bindings.insert(id, updated_binding.clone());
 
     // Save the settings and synchronize any active Secure Input shadows.
-    settings::write_settings(&app, settings);
+    settings::write_settings(&app, latest_settings);
     crate::secure_input::reconcile_fallback(&app);
 
     // Return the updated binding
@@ -279,9 +354,9 @@ fn restore_registration(app: &AppHandle, binding: &ShortcutBinding) {
 
 #[tauri::command]
 #[specta::specta]
-pub fn reset_binding(app: AppHandle, id: String) -> Result<BindingResponse, String> {
+pub async fn reset_binding(app: AppHandle, id: String) -> Result<BindingResponse, String> {
     let binding = settings::get_stored_binding(&settings::get_settings(&app), &id)?;
-    change_binding(app, id, binding.default_binding)
+    change_binding(app, id, binding.default_binding).await
 }
 
 /// Unregister every binding while the user is recording a new shortcut in
@@ -289,6 +364,13 @@ pub fn reset_binding(app: AppHandle, id: String) -> Result<BindingResponse, Stri
 /// mid-capture. The "cancel" binding is untouched: it is managed dynamically
 /// by the recording lifecycle.
 pub fn suspend_all_shortcuts(app: &AppHandle) {
+    #[cfg(target_os = "linux")]
+    if get_settings(app).keyboard_implementation == KeyboardImplementation::Portal {
+        if let Err(error) = portal_impl::suspend_shortcuts(app) {
+            report_portal_error(app, &error);
+        }
+        return;
+    }
     for (id, binding) in settings::get_bindings(app) {
         if id == "cancel" {
             continue;
@@ -306,6 +388,13 @@ pub fn suspend_all_shortcuts(app: &AppHandle) {
 /// Registering an already-registered shortcut fails cleanly in both
 /// implementations, so this is idempotent and safe on every exit path.
 pub fn resume_all_shortcuts(app: &AppHandle) {
+    #[cfg(target_os = "linux")]
+    if get_settings(app).keyboard_implementation == KeyboardImplementation::Portal {
+        if let Err(error) = portal_impl::resume_shortcuts(app) {
+            report_portal_error(app, &error);
+        }
+        return;
+    }
     let settings = get_settings(app);
     for (id, binding) in &settings.bindings {
         if id == "cancel" {
@@ -324,17 +413,43 @@ pub fn resume_all_shortcuts(app: &AppHandle) {
 /// shortcut in the UI. This avoids firing actions while keys are recorded.
 #[tauri::command]
 #[specta::specta]
-pub fn suspend_all_bindings(app: AppHandle) -> Result<(), String> {
-    suspend_all_shortcuts(&app);
-    Ok(())
+pub async fn suspend_all_bindings(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _configuration = lock_configuration();
+        #[cfg(target_os = "linux")]
+        if get_settings(&app).keyboard_implementation == KeyboardImplementation::Portal {
+            let result = portal_impl::suspend_shortcuts(&app);
+            if let Err(ref error) = result {
+                report_portal_error(&app, error);
+            }
+            return result;
+        }
+        suspend_all_shortcuts(&app);
+        Ok(())
+    })
+    .await
+    .map_err(|error| format!("Shortcut capture task failed: {error}"))?
 }
 
 /// Re-register all bindings after the user has finished recording.
 #[tauri::command]
 #[specta::specta]
-pub fn resume_all_bindings(app: AppHandle) -> Result<(), String> {
-    resume_all_shortcuts(&app);
-    Ok(())
+pub async fn resume_all_bindings(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _configuration = lock_configuration();
+        #[cfg(target_os = "linux")]
+        if get_settings(&app).keyboard_implementation == KeyboardImplementation::Portal {
+            let result = portal_impl::resume_shortcuts(&app);
+            if let Err(ref error) = result {
+                report_portal_error(&app, error);
+            }
+            return result;
+        }
+        resume_all_shortcuts(&app);
+        Ok(())
+    })
+    .await
+    .map_err(|error| format!("Shortcut capture task failed: {error}"))?
 }
 
 // ============================================================================
@@ -355,16 +470,28 @@ pub struct ImplementationChangeResult {
 /// and register them with the new implementation.
 #[tauri::command]
 #[specta::specta]
-pub fn change_keyboard_implementation_setting(
+pub async fn change_keyboard_implementation_setting(
     app: AppHandle,
     implementation: String,
 ) -> Result<ImplementationChangeResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        change_keyboard_implementation_inner(app, implementation)
+    })
+    .await
+    .map_err(|error| format!("Shortcut setup task failed: {error}"))?
+}
+
+fn change_keyboard_implementation_inner(
+    app: AppHandle,
+    implementation: String,
+) -> Result<ImplementationChangeResult, String> {
+    let _configuration = lock_configuration();
     let current_settings = settings::get_settings(&app);
     let current_impl = current_settings.keyboard_implementation;
     let new_impl = parse_keyboard_implementation(&implementation);
 
     // If same implementation, nothing to do
-    if current_impl == new_impl {
+    if current_impl == new_impl && new_impl != KeyboardImplementation::Portal {
         return Ok(ImplementationChangeResult {
             success: true,
             reset_bindings: vec![],
@@ -376,6 +503,13 @@ pub fn change_keyboard_implementation_setting(
         current_impl, new_impl
     );
 
+    // A paste grant belongs to the selected portal backend. Close only our
+    // keyboard-control session before leaving it; never stop other apps.
+    #[cfg(target_os = "linux")]
+    if current_impl == KeyboardImplementation::Portal && new_impl != current_impl {
+        crate::portal_input::shutdown()?;
+    }
+
     // Unregister all shortcuts from the current implementation
     unregister_all_shortcuts(&app, current_impl);
 
@@ -383,6 +517,22 @@ pub fn change_keyboard_implementation_setting(
     let mut settings = settings::get_settings(&app);
     settings.keyboard_implementation = new_impl;
     settings::write_settings(&app, settings);
+
+    if new_impl == KeyboardImplementation::Portal {
+        // Keep the selected backend on denial/failure, with a visible notice.
+        // Never silently select a raw-input backend or pretend X11 shortcuts work.
+        initialize_portal(&app)?;
+        let _ = app.emit(
+            "settings-changed",
+            serde_json::json!({
+                "setting": "keyboard_implementation", "value": "portal", "reset_bindings": []
+            }),
+        );
+        return Ok(ImplementationChangeResult {
+            success: true,
+            reset_bindings: vec![],
+        });
+    }
 
     // Carbon fallback registrations use the Tauri plugin. Remove them before
     // registering the full Tauri implementation to avoid duplicate conflicts.
@@ -394,6 +544,7 @@ pub fn change_keyboard_implementation_setting(
     if new_impl == KeyboardImplementation::HandyKeys && initialize_handy_keys_with_rollback(&app)? {
         // Shortcuts already registered during init.
         crate::secure_input::reconcile_fallback(&app);
+        crate::notices::clear(&app, crate::notices::NoticeSource::Shortcuts);
         return Ok(ImplementationChangeResult {
             success: true,
             reset_bindings: vec![],
@@ -403,6 +554,7 @@ pub fn change_keyboard_implementation_setting(
     // Register all shortcuts with new implementation, resetting invalid ones
     let reset_bindings = register_all_shortcuts_for_implementation(&app, new_impl);
     crate::secure_input::reconcile_fallback(&app);
+    crate::notices::clear(&app, crate::notices::NoticeSource::Shortcuts);
 
     // Emit event to notify frontend of the change
     let _ = app.emit(
@@ -422,6 +574,53 @@ pub fn change_keyboard_implementation_setting(
     })
 }
 
+/// Explicitly request keyboard-only paste permission while Handy has focus.
+/// Output workers never open consent dialogs, which would steal target focus.
+#[tauri::command]
+#[specta::specta]
+pub async fn setup_portal_pasting(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _configuration = lock_configuration();
+        if get_settings(&app).keyboard_implementation != KeyboardImplementation::Portal {
+            return Err("Select Desktop Portal before setting up pasting".into());
+        }
+        #[cfg(target_os = "linux")]
+        {
+            if !crate::utils::is_wayland() {
+                return Err("Desktop Portal pasting requires a Wayland session".into());
+            }
+            let _recording_gate = PORTAL_PASTE_SETUP_GATE.try_lock().map_err(|_| {
+                "Finish the current recording before setting up pasting".to_string()
+            })?;
+            if crate::tray::dictation_in_progress(&app) {
+                return Err("Finish the current dictation before setting up pasting".into());
+            }
+            let _output_gate = crate::clipboard::lock_idle_output()?;
+            crate::portal_input::setup()
+        }
+        #[cfg(not(target_os = "linux"))]
+        Err("Desktop Portal pasting requires Linux".into())
+    })
+    .await
+    .map_err(|_| "Portal paste setup task failed".to_string())?
+}
+
+/// Revoke only this process's paste session; shortcut approval is separate.
+#[tauri::command]
+#[specta::specta]
+pub async fn stop_portal_pasting() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        #[cfg(target_os = "linux")]
+        {
+            crate::portal_input::shutdown()
+        }
+        #[cfg(not(target_os = "linux"))]
+        Ok(())
+    })
+    .await
+    .map_err(|_| "Portal paste stop task failed".to_string())?
+}
+
 /// Get the current keyboard implementation
 #[tauri::command]
 #[specta::specta]
@@ -430,6 +629,7 @@ pub fn get_keyboard_implementation(app: AppHandle) -> String {
     match settings.keyboard_implementation {
         KeyboardImplementation::Tauri => "tauri".to_string(),
         KeyboardImplementation::HandyKeys => "handy_keys".to_string(),
+        KeyboardImplementation::Portal => "portal".to_string(),
         KeyboardImplementation::None => "none".to_string(),
     }
 }
@@ -446,6 +646,10 @@ fn validate_shortcut_for_implementation(
     match implementation {
         KeyboardImplementation::Tauri => tauri_impl::validate_shortcut(raw),
         KeyboardImplementation::HandyKeys => handy_keys::validate_shortcut(raw),
+        #[cfg(target_os = "linux")]
+        KeyboardImplementation::Portal => portal_impl::validate_shortcut(raw),
+        #[cfg(not(target_os = "linux"))]
+        KeyboardImplementation::Portal => Err("Desktop Portal shortcuts require Linux".into()),
         KeyboardImplementation::None => Ok(()),
     }
 }
@@ -455,6 +659,7 @@ fn parse_keyboard_implementation(s: &str) -> KeyboardImplementation {
     match s {
         "tauri" => KeyboardImplementation::Tauri,
         "handy_keys" => KeyboardImplementation::HandyKeys,
+        "portal" => KeyboardImplementation::Portal,
         "none" => KeyboardImplementation::None,
         other => {
             warn!(
@@ -468,6 +673,11 @@ fn parse_keyboard_implementation(s: &str) -> KeyboardImplementation {
 
 /// Unregister all shortcuts for the current implementation
 fn unregister_all_shortcuts(app: &AppHandle, implementation: KeyboardImplementation) {
+    if implementation == KeyboardImplementation::Portal {
+        #[cfg(target_os = "linux")]
+        portal_impl::cleanup_shortcuts(app);
+        return;
+    }
     let bindings = settings::get_bindings(app);
 
     for (id, binding) in bindings {
@@ -479,6 +689,7 @@ fn unregister_all_shortcuts(app: &AppHandle, implementation: KeyboardImplementat
         let result = match implementation {
             KeyboardImplementation::Tauri => tauri_impl::unregister_shortcut(app, binding),
             KeyboardImplementation::HandyKeys => handy_keys::unregister_shortcut(app, binding),
+            KeyboardImplementation::Portal => Ok(()),
             KeyboardImplementation::None => Ok(()),
         };
 
@@ -488,6 +699,11 @@ fn unregister_all_shortcuts(app: &AppHandle, implementation: KeyboardImplementat
                 id, e
             );
         }
+    }
+    // Dropping the native manager closes its device handles and stops its
+    // listener; selecting Portal must not leave a raw-input listener running.
+    if implementation == KeyboardImplementation::HandyKeys {
+        handy_keys::cleanup_shortcuts(app);
     }
 }
 
@@ -538,6 +754,7 @@ fn register_all_shortcuts_for_implementation(
         let result = match implementation {
             KeyboardImplementation::Tauri => tauri_impl::register_shortcut(app, binding),
             KeyboardImplementation::HandyKeys => handy_keys::register_shortcut(app, binding),
+            KeyboardImplementation::Portal => Ok(()), // Portal initialization binds one complete batch.
             KeyboardImplementation::None => Ok(()),
         };
 
@@ -559,10 +776,6 @@ fn register_all_shortcuts_for_implementation(
 
 /// Initialize HandyKeys if not already initialized, with rollback on failure
 fn initialize_handy_keys_with_rollback(app: &AppHandle) -> Result<bool, String> {
-    if app.try_state::<handy_keys::HandyKeysState>().is_some() {
-        return Ok(false); // Already initialized, caller should continue
-    }
-
     if let Err(e) = handy_keys::init_shortcuts(app) {
         error!("Failed to initialize HandyKeys: {}", e);
         // Rollback to Tauri
@@ -1107,24 +1320,41 @@ pub fn change_auto_submit_key_setting(app: AppHandle, key: String) -> Result<(),
 
 #[tauri::command]
 #[specta::specta]
-pub fn change_post_process_enabled_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
-    let mut settings = settings::get_settings(&app);
-    settings.post_process_enabled = enabled;
-    settings::write_settings(&app, settings.clone());
+pub async fn change_post_process_enabled_setting(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || change_post_process_enabled_inner(app, enabled))
+        .await
+        .map_err(|error| format!("Shortcut update task failed: {error}"))?
+}
 
-    // Register or unregister the post-processing shortcut
-    if let Some(binding) = settings
+fn change_post_process_enabled_inner(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let _configuration = lock_configuration();
+    let previous = settings::get_settings(&app);
+    if let Some(binding) = previous
         .bindings
         .get("transcribe_with_post_process")
         .cloned()
     {
-        if enabled {
-            let _ = register_shortcut(&app, binding);
+        let result = if enabled {
+            register_shortcut(&app, binding)
         } else {
-            let _ = unregister_shortcut(&app, binding);
+            unregister_shortcut(&app, binding)
+        };
+        if let Err(error) = result {
+            if previous.keyboard_implementation == KeyboardImplementation::Portal {
+                report_portal_error(&app, &error);
+                return Err(error);
+            }
+            warn!("Could not update post-processing shortcut: {}", error);
         }
     }
 
+    // Preserve unrelated settings changed while a portal dialog was pending.
+    let mut latest = settings::get_settings(&app);
+    latest.post_process_enabled = enabled;
+    settings::write_settings(&app, latest);
     crate::secure_input::reconcile_fallback(&app);
     Ok(())
 }

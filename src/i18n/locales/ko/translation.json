@@ -819,7 +819,17 @@
       "keyboardImplementation": {
         "title": "키보드 구현",
         "description": "키보드 단축키 백엔드를 선택하세요.",
-        "bindingsReset": "키보드 단축키가 호환되지 않아 기본값으로 재설정되었습니다"
+        "bindingsReset": "키보드 단축키가 호환되지 않아 기본값으로 재설정되었습니다",
+        "portalLabel": "Desktop Portal",
+        "portalDescription": "Your desktop approves the shortcuts and delivers press and release events for hold-to-talk.",
+        "portalSetup": "Set Up Shortcuts",
+        "portalPasteSetup": "Set Up Pasting",
+        "portalPasteStop": "Stop Pasting",
+        "portalPasteDescription": "Clipboard pasting needs separate permission to control the keyboard. Set it up before testing; access ends when you stop pasting or quit Handy.",
+        "portalPasteSetupComplete": "Pasting setup completed.",
+        "portalPasteStopped": "Handy's paste session closed.",
+        "portalPasteSetupFailed": "Could Not Set Up Pasting",
+        "portalPasteStopFailed": "Could Not Stop Pasting"
       },
       "pasteDelay": {
         "title": "붙여넣기 지연 (이전)",
@@ -951,7 +961,9 @@
     "filePostProcessFailedTitle": "후처리 없이 받아씀",
     "filePostProcessFailed": "후처리가 완료되지 않아 받아쓰기 결과를 그대로 저장했습니다.",
     "fileTranscriptionFailedTitle": "파일 음성 인식 실패",
-    "transcriptionFailedTitle": "음성 인식 실패"
+    "transcriptionFailedTitle": "음성 인식 실패",
+    "shortcutRegistrationFailedTitle": "Global Shortcuts Unavailable",
+    "shortcutRegistrationFailed": "Check your desktop's shortcut permissions, then use Set Up Shortcuts in Advanced settings to try again."
   },
   "notices": {
     "errorOne": "오류 {{n}}개",

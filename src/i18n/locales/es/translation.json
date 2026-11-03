@@ -819,7 +819,17 @@
       "keyboardImplementation": {
         "title": "Implementación del teclado",
         "description": "Elige el sistema que gestiona los atajos de teclado.",
-        "bindingsReset": "Los atajos de teclado eran incompatibles y se restablecieron a los valores predeterminados"
+        "bindingsReset": "Los atajos de teclado eran incompatibles y se restablecieron a los valores predeterminados",
+        "portalLabel": "Desktop Portal",
+        "portalDescription": "Your desktop approves the shortcuts and delivers press and release events for hold-to-talk.",
+        "portalSetup": "Set Up Shortcuts",
+        "portalPasteSetup": "Set Up Pasting",
+        "portalPasteStop": "Stop Pasting",
+        "portalPasteDescription": "Clipboard pasting needs separate permission to control the keyboard. Set it up before testing; access ends when you stop pasting or quit Handy.",
+        "portalPasteSetupComplete": "Pasting setup completed.",
+        "portalPasteStopped": "Handy's paste session closed.",
+        "portalPasteSetupFailed": "Could Not Set Up Pasting",
+        "portalPasteStopFailed": "Could Not Stop Pasting"
       },
       "pasteDelay": {
         "title": "Retraso de pegado (antes)",
@@ -951,7 +961,9 @@
     "filePostProcessFailedTitle": "Transcrito sin post proceso",
     "filePostProcessFailed": "El post proceso no terminó, así que la transcripción se guardó tal cual.",
     "fileTranscriptionFailedTitle": "Error al transcribir el archivo",
-    "transcriptionFailedTitle": "Error de transcripción"
+    "transcriptionFailedTitle": "Error de transcripción",
+    "shortcutRegistrationFailedTitle": "Global Shortcuts Unavailable",
+    "shortcutRegistrationFailed": "Check your desktop's shortcut permissions, then use Set Up Shortcuts in Advanced settings to try again."
   },
   "notices": {
     "errorOne": "{{n}} error",

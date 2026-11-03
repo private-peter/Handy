@@ -34,6 +34,7 @@ pub enum NoticeSource {
     Dictation,
     File,
     Model,
+    Shortcuts,
 }
 
 /// The frontend maps each code to its text in `src/lib/notices.ts`.
@@ -48,6 +49,7 @@ pub enum NoticeCode {
     PostProcessFailed,
     FileTranscriptionFailed,
     FilePostProcessFailed,
+    ShortcutRegistrationFailed,
 }
 
 impl NoticeCode {
@@ -59,7 +61,8 @@ impl NoticeCode {
             | Self::MicPermissionDenied
             | Self::RecordingFailed
             | Self::ModelLoadFailed
-            | Self::FileTranscriptionFailed => NoticeLevel::Error,
+            | Self::FileTranscriptionFailed
+            | Self::ShortcutRegistrationFailed => NoticeLevel::Error,
             Self::PostProcessFailed | Self::FilePostProcessFailed => NoticeLevel::Warning,
         }
     }
@@ -76,6 +79,7 @@ impl NoticeCode {
             Self::PostProcessFailed => &strings.post_process_failed_title,
             Self::FileTranscriptionFailed => &strings.file_transcription_failed_title,
             Self::FilePostProcessFailed => &strings.file_post_process_failed_title,
+            Self::ShortcutRegistrationFailed => &strings.shortcut_registration_failed_title,
         }
     }
 }
@@ -250,6 +254,19 @@ mod tests {
                 file(NoticeCode::FileTranscriptionFailed),
             ]
         );
+    }
+
+    #[test]
+    fn completing_dictation_preserves_shortcut_failures() {
+        let shortcut_failure = Notice::new(
+            NoticeCode::ShortcutRegistrationFailed,
+            NoticeSource::Shortcuts,
+        );
+        let mut active = vec![shortcut_failure.clone(), dictation(NoticeCode::PasteFailed)];
+
+        assert!(remove(&mut active, NoticeSource::Dictation, None));
+        assert_eq!(active, vec![shortcut_failure]);
+        assert_eq!(active[0].level, NoticeLevel::Error);
     }
 
     #[test]

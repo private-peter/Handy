@@ -819,7 +819,17 @@
       "keyboardImplementation": {
         "title": "Implementació del teclat",
         "description": "Tria el motor de dreceres de teclat.",
-        "bindingsReset": "Les dreceres de teclat eren incompatibles i s'han restablert als valors per defecte"
+        "bindingsReset": "Les dreceres de teclat eren incompatibles i s'han restablert als valors per defecte",
+        "portalLabel": "Desktop Portal",
+        "portalDescription": "Your desktop approves the shortcuts and delivers press and release events for hold-to-talk.",
+        "portalSetup": "Set Up Shortcuts",
+        "portalPasteSetup": "Set Up Pasting",
+        "portalPasteStop": "Stop Pasting",
+        "portalPasteDescription": "Clipboard pasting needs separate permission to control the keyboard. Set it up before testing; access ends when you stop pasting or quit Handy.",
+        "portalPasteSetupComplete": "Pasting setup completed.",
+        "portalPasteStopped": "Handy's paste session closed.",
+        "portalPasteSetupFailed": "Could Not Set Up Pasting",
+        "portalPasteStopFailed": "Could Not Stop Pasting"
       },
       "pasteDelay": {
         "title": "Retard abans d'enganxar",
@@ -951,7 +961,9 @@
     "filePostProcessFailedTitle": "Transcrit sense postprocessament",
     "filePostProcessFailed": "El postprocessament no ha acabat, així que la transcripció s'ha desat tal qual.",
     "fileTranscriptionFailedTitle": "La transcripció del fitxer ha fallat",
-    "transcriptionFailedTitle": "La transcripció ha fallat"
+    "transcriptionFailedTitle": "La transcripció ha fallat",
+    "shortcutRegistrationFailedTitle": "Global Shortcuts Unavailable",
+    "shortcutRegistrationFailed": "Check your desktop's shortcut permissions, then use Set Up Shortcuts in Advanced settings to try again."
   },
   "notices": {
     "errorOne": "{{n}} error",

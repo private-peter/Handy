@@ -819,7 +819,17 @@
       "keyboardImplementation": {
         "title": "किबोर्ड कार्यान्वयन",
         "description": "किबोर्ड सर्टकट ब्याकइन्ड छान्नुहोस्।",
-        "bindingsReset": "किबोर्ड सर्टकटहरू असंगत भएकाले डिफल्टमा रिसेट गरियो"
+        "bindingsReset": "किबोर्ड सर्टकटहरू असंगत भएकाले डिफल्टमा रिसेट गरियो",
+        "portalLabel": "Desktop Portal",
+        "portalDescription": "Your desktop approves the shortcuts and delivers press and release events for hold-to-talk.",
+        "portalSetup": "Set Up Shortcuts",
+        "portalPasteSetup": "Set Up Pasting",
+        "portalPasteStop": "Stop Pasting",
+        "portalPasteDescription": "Clipboard pasting needs separate permission to control the keyboard. Set it up before testing; access ends when you stop pasting or quit Handy.",
+        "portalPasteSetupComplete": "Pasting setup completed.",
+        "portalPasteStopped": "Handy's paste session closed.",
+        "portalPasteSetupFailed": "Could Not Set Up Pasting",
+        "portalPasteStopFailed": "Could Not Stop Pasting"
       },
       "pasteDelay": {
         "title": "पेस्ट ढिलाइ (अघि)",
@@ -951,7 +961,9 @@
     "filePostProcessFailedTitle": "पोस्ट प्रोसेस बिना ट्रान्सक्राइब गरियो",
     "filePostProcessFailed": "पोस्ट प्रोसेस पूरा भएन, त्यसैले ट्रान्सक्रिप्ट जस्तो थियो त्यस्तै सुरक्षित गरियो।",
     "fileTranscriptionFailedTitle": "फाइल ट्रान्सक्रिप्सन गर्न सकिएन",
-    "transcriptionFailedTitle": "ट्रान्सक्रिप्सन गर्न सकिएन"
+    "transcriptionFailedTitle": "ट्रान्सक्रिप्सन गर्न सकिएन",
+    "shortcutRegistrationFailedTitle": "Global Shortcuts Unavailable",
+    "shortcutRegistrationFailed": "Check your desktop's shortcut permissions, then use Set Up Shortcuts in Advanced settings to try again."
   },
   "notices": {
     "errorOne": "{{n}} त्रुटि",

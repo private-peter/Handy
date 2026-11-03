@@ -113,7 +113,18 @@ export const useShortcutCapture = (
       }
       held.current = "handyKeys";
     } else if (!inert) {
-      await commands.suspendAllBindings().catch(console.error);
+      const result = await commands.suspendAllBindings().catch((error) => ({
+        status: "error" as const,
+        error: String(error),
+      }));
+      if (result.status === "error") {
+        notify({
+          title: t("settings.general.shortcut.errors.set", {
+            error: String(result.error),
+          }),
+        });
+        return false;
+      }
       held.current = "bindings";
     }
     setPartial("");

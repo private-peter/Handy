@@ -743,6 +743,13 @@ fn run_effect(app: &AppHandle, state: &mut CoordinatorState, effect: Effect) {
 /// Execute a start effect; returns whether recording actually began, so the
 /// state machine can roll back its optimistic transition on failure.
 fn start(app: &AppHandle, binding_id: &str, hotkey_string: &str) -> bool {
+    // Do not record into an open permission dialog. Returning false rolls back
+    // the coordinator's optimistic start, including CLI/external triggers.
+    #[cfg(target_os = "linux")]
+    let Ok(_setup_gate) = crate::shortcut::PORTAL_PASTE_SETUP_GATE.try_lock() else {
+        warn!("Dictation start skipped while paste permission setup is open");
+        return false;
+    };
     let Some(action) = ACTION_MAP.get(binding_id) else {
         warn!("No action in ACTION_MAP for '{binding_id}'");
         return false;

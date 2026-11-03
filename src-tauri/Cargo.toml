@@ -51,7 +51,7 @@ anyhow = "1.0.95"
 hound = "3.5.1"
 log = "0.4.25"
 env_filter = "0.1.0"
-tokio = { version = "1.43.0", features = ["process"] }
+tokio = { version = "1.43.0", features = ["process", "rt", "sync", "time", "macros"] }
 earshot = "1.2.2"
 enigo = "0.6.1"
 # Feedback sounds. No `recording`: microphone capture is handy-recorder's.
@@ -167,6 +167,7 @@ objc2-app-kit = "0.3"
 objc2-service-management = "0.3.2"
 
 [target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "=0.13.9", features = ["global_shortcuts", "remote_desktop", "screencast"] }
 gtk-layer-shell = { version = "0.8", features = ["v0_6"] }
 # Renderer policy in src/webkit_renderer.rs compares the linked WebKitGTK
 # version against the release that introduced damage-based compositing.

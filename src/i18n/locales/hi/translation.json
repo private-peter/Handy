@@ -819,7 +819,17 @@
       "keyboardImplementation": {
         "title": "कीबोर्ड बैकएंड",
         "description": "कीबोर्ड शॉर्टकट का बैकएंड चुनें.",
-        "bindingsReset": "कीबोर्ड शॉर्टकट संगत नहीं थे, इसलिए उन्हें डिफ़ॉल्ट पर रीसेट कर दिया गया"
+        "bindingsReset": "कीबोर्ड शॉर्टकट संगत नहीं थे, इसलिए उन्हें डिफ़ॉल्ट पर रीसेट कर दिया गया",
+        "portalLabel": "Desktop Portal",
+        "portalDescription": "Your desktop approves the shortcuts and delivers press and release events for hold-to-talk.",
+        "portalSetup": "Set Up Shortcuts",
+        "portalPasteSetup": "Set Up Pasting",
+        "portalPasteStop": "Stop Pasting",
+        "portalPasteDescription": "Clipboard pasting needs separate permission to control the keyboard. Set it up before testing; access ends when you stop pasting or quit Handy.",
+        "portalPasteSetupComplete": "Pasting setup completed.",
+        "portalPasteStopped": "Handy's paste session closed.",
+        "portalPasteSetupFailed": "Could Not Set Up Pasting",
+        "portalPasteStopFailed": "Could Not Stop Pasting"
       },
       "pasteDelay": {
         "title": "पेस्ट में देरी (पहले)",
@@ -951,7 +961,9 @@
     "filePostProcessFailedTitle": "पोस्ट प्रोसेस के बिना ट्रांसक्राइब किया गया",
     "filePostProcessFailed": "पोस्ट प्रोसेस पूरा नहीं हुआ, इसलिए ट्रांसक्रिप्ट जैसा था वैसा ही सहेजा गया।",
     "fileTranscriptionFailedTitle": "फ़ाइल का ट्रांसक्रिप्शन नहीं हो सका",
-    "transcriptionFailedTitle": "ट्रांसक्रिप्शन नहीं हो सका"
+    "transcriptionFailedTitle": "ट्रांसक्रिप्शन नहीं हो सका",
+    "shortcutRegistrationFailedTitle": "Global Shortcuts Unavailable",
+    "shortcutRegistrationFailed": "Check your desktop's shortcut permissions, then use Set Up Shortcuts in Advanced settings to try again."
   },
   "notices": {
     "errorOne": "{{n}} त्रुटि",
