@@ -743,6 +743,8 @@ pub fn run(cli_args: CliArgs) {
             shortcut::change_whats_new_last_seen_version_setting,
             shortcut::change_keyboard_implementation_setting,
             shortcut::get_keyboard_implementation,
+            shortcut::get_portal_shortcuts,
+            shortcut::configure_portal_shortcuts,
             shortcut::setup_portal_pasting,
             shortcut::stop_portal_pasting,
             shortcut::change_show_tray_icon_setting,

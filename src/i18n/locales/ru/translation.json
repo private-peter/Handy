@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Ярлыки Handy",
         "description": "Настройте сочетания клавиш для запуска записи речи в текст",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Загрузка ярлыков...",
         "none": "Ярлыки не настроены",
         "notFound": "Ярлык не найден",

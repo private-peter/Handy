@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Atajos de Handy",
         "description": "Configura atajos de teclado para activar la grabación de voz a texto",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Cargando atajos...",
         "none": "No hay atajos configurados",
         "notFound": "Atajo no encontrado",

@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Sneltoetsen",
         "description": "Configureer sneltoetsen om spraak-naar-tekst-opnames te starten",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Sneltoetsen laden...",
         "none": "Geen sneltoetsen geconfigureerd",
         "notFound": "Sneltoets niet gevonden",

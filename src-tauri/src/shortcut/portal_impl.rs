@@ -16,7 +16,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{mpsc as response_channel, Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::managers::audio::AudioRecordingManager;
@@ -39,6 +39,7 @@ type Response = response_channel::Sender<Result<(), String>>;
 #[derive(Default)]
 pub struct PortalState {
     actor: Mutex<Option<ActorHandle>>,
+    dispatch: Arc<Mutex<DispatchState>>,
 }
 
 struct ActorHandle {
@@ -60,6 +61,7 @@ enum Operation {
     Unregister(String),
     Suspend,
     Resume,
+    Configure,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -72,6 +74,7 @@ struct SessionKey {
 struct DispatchState {
     active: Option<SessionKey>,
     bindings: Bindings,
+    approved: BTreeMap<String, String>,
     held: BTreeSet<String>,
 }
 
@@ -79,7 +82,16 @@ impl DispatchState {
     fn install(&mut self, key: SessionKey, bindings: Bindings) {
         self.active = Some(key);
         self.bindings = bindings;
+        self.approved.clear();
         self.held.clear();
+    }
+
+    fn update_approved(&mut self, key: &SessionKey, approved: BTreeMap<String, String>) -> bool {
+        if self.active.as_ref() != Some(key) {
+            return false;
+        }
+        self.approved = approved;
+        true
     }
 
     /// Reject stale sessions, unknown IDs, autorepeat and duplicate releases.
@@ -110,6 +122,7 @@ impl DispatchState {
         let held = !self.held.is_empty();
         self.active = None;
         self.bindings.clear();
+        self.approved.clear();
         self.held.clear();
         held
     }
@@ -120,6 +133,26 @@ fn managed_state(app: &AppHandle) -> tauri::State<'_, PortalState> {
         app.manage(PortalState::default());
     }
     app.state::<PortalState>()
+}
+
+/// Desktop-approved descriptions are runtime state, never saved as preferences.
+pub fn approved_shortcuts(app: &AppHandle) -> Result<BTreeMap<String, String>, String> {
+    let Some(state) = app.try_state::<PortalState>() else {
+        return Ok(BTreeMap::new());
+    };
+    let approved = state
+        .dispatch
+        .lock()
+        .map_err(|_| "Shortcut dispatch lock poisoned")?
+        .approved
+        .clone();
+    Ok(approved)
+}
+
+fn publish_approved_shortcuts(app: &AppHandle, dispatch: &Mutex<DispatchState>) {
+    if let Ok(approved) = dispatch.lock().map(|state| state.approved.clone()) {
+        let _ = app.emit("portal-shortcuts-changed", approved);
+    }
 }
 
 fn initial_bindings(app: &AppHandle) -> Result<Bindings, String> {
@@ -161,6 +194,7 @@ fn ensure_actor(app: &AppHandle) -> Result<(), String> {
         let _ = old.shutdown.send(true);
         let _ = old.thread.join();
     }
+    let dispatch = state.dispatch.clone();
     let (commands, receiver) = mpsc::unbounded_channel();
     let (shutdown, shutdown_receiver) = watch::channel(false);
     let (finished_tx, finished) = response_channel::channel();
@@ -172,7 +206,9 @@ fn ensure_actor(app: &AppHandle) -> Result<(), String> {
                 .enable_all()
                 .build()
             {
-                Ok(runtime) => runtime.block_on(actor_loop(app, receiver, shutdown_receiver)),
+                Ok(runtime) => {
+                    runtime.block_on(actor_loop(app, receiver, shutdown_receiver, dispatch))
+                }
                 Err(e) => {
                     report_failure(&app, &format!("Cannot start shortcut portal runtime: {e}"))
                 }
@@ -230,6 +266,10 @@ pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
     let bindings = initial_bindings(app)?;
     ensure_actor(app)?;
     request(app, Operation::Initialize(bindings))
+}
+
+pub fn configure_shortcuts(app: &AppHandle) -> Result<(), String> {
+    request(app, Operation::Configure)
 }
 
 pub fn register_shortcut(app: &AppHandle, binding: ShortcutBinding) -> Result<(), String> {
@@ -309,6 +349,7 @@ async fn actor_loop(
     app: AppHandle,
     mut commands: mpsc::UnboundedReceiver<Command>,
     mut shutdown: watch::Receiver<bool>,
+    dispatch: Arc<Mutex<DispatchState>>,
 ) {
     let mut actor = Actor {
         app,
@@ -316,7 +357,7 @@ async fn actor_loop(
         active: None,
         suspended: false,
         generation: 0,
-        dispatch: Arc::new(Mutex::new(DispatchState::default())),
+        dispatch,
         shutdown: shutdown.clone(),
     };
     loop {
@@ -351,6 +392,7 @@ impl Actor {
                 (owned, state.clear(None))
             })
             .unwrap_or((false, false));
+        publish_approved_shortcuts(&self.app, &self.dispatch);
         cancel_owned_operation(&self.app, owned, held);
         if let Some(active) = self.active.take() {
             active.close().await;
@@ -427,6 +469,39 @@ impl Actor {
         cancelled: watch::Receiver<bool>,
     ) -> Result<(), String> {
         match operation {
+            Operation::Configure => {
+                let active = self
+                    .active
+                    .as_ref()
+                    .filter(|session| !session.worker.is_finished())
+                    .ok_or("Set up Desktop Portal shortcuts before changing their assignment.")?;
+                let proxy = GlobalShortcuts::with_connection(active.connection.clone())
+                    .await
+                    .map_err(|error| portal_error("open shortcut settings", error))?;
+                if proxy.version() < 2 {
+                    return Err("This desktop does not support opening shortcut settings from Handy. Change Handy's shortcuts in your desktop's application settings.".into());
+                }
+                let path = self
+                    .dispatch
+                    .lock()
+                    .map_err(|_| "Shortcut dispatch lock poisoned")?
+                    .active
+                    .as_ref()
+                    .map(|key| key.path.clone())
+                    .ok_or("Shortcut portal session is not active. Retry Set Up Shortcuts.")?;
+                let path = ashpd::zbus::zvariant::ObjectPath::try_from(path.as_str())
+                    .map_err(|_| "Shortcut portal session handle is invalid")?;
+                let options = BTreeMap::<&str, ashpd::zbus::zvariant::Value<'_>>::new();
+                // Use the same registered connection and current session. This
+                // standard v2 method opens the desktop's editor without rebind.
+                tokio::time::timeout(
+                    Duration::from_secs(10),
+                    proxy.call::<_, _, ()>("ConfigureShortcuts", &(path, "", options)),
+                )
+                .await
+                .map_err(|_| "Opening desktop shortcut settings timed out".to_string())?
+                .map_err(|error| portal_error("open shortcut settings", error))
+            }
             Operation::Initialize(bindings) => {
                 self.suspended = false;
                 self.replace(bindings, cancelled).await
@@ -527,6 +602,7 @@ struct Prepared {
     key: SessionKey,
     owner: String,
     signals: BoxStream<'static, ashpd::zbus::Result<Message>>,
+    approved: BTreeMap<String, String>,
 }
 
 async fn start_session(
@@ -619,6 +695,7 @@ async fn prepare(
                 .preferred_trigger(Some(trigger.as_str())))
         })
         .collect::<Result<_, String>>()?;
+    let approved;
     {
         let mut closed = session
             .receive_closed()
@@ -643,6 +720,16 @@ async fn prepare(
                 .iter()
                 .map(|s| (s.id(), s.trigger_description())),
         )?;
+        approved = response
+            .shortcuts()
+            .iter()
+            .map(|shortcut| {
+                (
+                    shortcut.id().to_owned(),
+                    shortcut.trigger_description().to_owned(),
+                )
+            })
+            .collect();
         for shortcut in response.shortcuts() {
             info!(
                 "Shortcut portal assigned action {}: {}",
@@ -657,6 +744,7 @@ async fn prepare(
         key: SessionKey { generation, path },
         owner,
         signals,
+        approved,
     })
 }
 
@@ -726,6 +814,9 @@ async fn session_worker(
         .as_ref()
         .and_then(|key| dispatch.lock().ok().map(|mut s| s.clear(Some(key))))
         .unwrap_or(false);
+    if was_active {
+        publish_approved_shortcuts(&app, &dispatch);
+    }
     cancel_owned_operation(&app, was_active, held);
     if let Err(ref error) = result {
         if was_active && !*shutdown.borrow() && !*local_stop.borrow() {
@@ -774,10 +865,14 @@ async fn run_session(
     if *shutdown.borrow() || *local_stop.borrow() || *cancelled.borrow() {
         return Err("Shortcut registration was cancelled before it became active.".into());
     }
-    dispatch
-        .lock()
-        .map_err(|_| "Shortcut dispatch lock poisoned")?
-        .install(prepared.key.clone(), bindings.clone());
+    {
+        let mut state = dispatch
+            .lock()
+            .map_err(|_| "Shortcut dispatch lock poisoned")?;
+        state.install(prepared.key.clone(), bindings.clone());
+        state.update_approved(&prepared.key, prepared.approved.clone());
+    }
+    publish_approved_shortcuts(app, dispatch);
     for id in bindings.keys() {
         info!("Shortcut portal registered action: {id}");
     }
@@ -875,7 +970,24 @@ fn dispatch_signal(
                         .iter()
                         .map(|shortcut| (shortcut.id(), shortcut.trigger_description())),
                 )?;
-                info!("Shortcut portal mapping updated");
+                let approved = event
+                    .shortcuts()
+                    .iter()
+                    .map(|shortcut| {
+                        (
+                            shortcut.id().to_owned(),
+                            shortcut.trigger_description().to_owned(),
+                        )
+                    })
+                    .collect();
+                let changed = dispatch
+                    .lock()
+                    .map_err(|_| "Shortcut dispatch lock poisoned")?
+                    .update_approved(key, approved);
+                if changed {
+                    publish_approved_shortcuts(app, dispatch);
+                    info!("Shortcut portal mapping updated");
+                }
             }
         }
         _ => {}
@@ -1190,6 +1302,53 @@ mod tests {
             ]
         )
         .is_ok());
+    }
+
+    #[test]
+    fn approved_shortcuts_follow_desktop_rebinds_without_changing_preferences() {
+        let key = SessionKey {
+            generation: 1,
+            path: "/session/approved".into(),
+        };
+        let mut state = DispatchState::default();
+        state.install(
+            key.clone(),
+            [("transcribe".into(), binding("transcribe"))].into(),
+        );
+        assert!(state.update_approved(&key, [("transcribe".into(), "Press F12".into())].into()));
+        assert_eq!(state.approved["transcribe"], "Press F12");
+        assert_eq!(
+            state.bindings["transcribe"].current_binding,
+            "ctrl+alt+space"
+        );
+        assert!(state.update_approved(&key, [("transcribe".into(), "Press F11".into())].into()));
+        assert_eq!(state.approved["transcribe"], "Press F11");
+        state.clear(Some(&key));
+        assert!(state.approved.is_empty());
+        assert!(!state.update_approved(&key, [("transcribe".into(), "Press F12".into())].into()));
+        assert!(state.approved.is_empty());
+    }
+
+    #[test]
+    fn stale_session_cannot_replace_or_clear_current_approved_shortcuts() {
+        let old = SessionKey {
+            generation: 1,
+            path: "/session/old".into(),
+        };
+        let current = SessionKey {
+            generation: 2,
+            path: "/session/current".into(),
+        };
+        let mut state = DispatchState::default();
+        state.install(
+            current.clone(),
+            [("transcribe".into(), binding("transcribe"))].into(),
+        );
+        let approved = [("transcribe".into(), "Press F12".into())].into();
+        assert!(state.update_approved(&current, approved));
+        assert!(!state.update_approved(&old, BTreeMap::new()));
+        state.clear(Some(&old));
+        assert_eq!(state.approved["transcribe"], "Press F12");
     }
 
     #[test]

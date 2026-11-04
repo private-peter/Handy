@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Handy ショートカット",
         "description": "音声録音を開始するキーボードショートカットを設定",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "ショートカットを読み込み中…",
         "none": "ショートカットが設定されていません",
         "notFound": "ショートカットが見つかりません",

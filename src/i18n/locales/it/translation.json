@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Scorciatoie di Handy",
         "description": "Configura le scorciatoie per attivare la trascrizione vocale",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Caricamento delle scorciatoie...",
         "none": "Nessuna scorciatoia configurata",
         "notFound": "Scorciatoia non trovata",

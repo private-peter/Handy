@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Handy Shortcuts",
         "description": "Configure keyboard shortcuts to trigger speech-to-text recording",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Loading shortcuts...",
         "none": "No shortcuts configured",
         "notFound": "Shortcut not found",

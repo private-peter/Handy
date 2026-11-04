@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Комбінації клавіш",
         "description": "Налаштуйте клавіатурні скорочення для запуску запису мовлення в текст",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Завантаження скорочень...",
         "none": "Скорочення не налаштовані",
         "notFound": "Скорочення не знайдено",

@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Raccourcis Handy",
         "description": "Configurer les raccourcis clavier pour déclencher l'enregistrement de la reconnaissance vocale",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Chargement des raccourcis...",
         "none": "Aucun raccourci configuré",
         "notFound": "Raccourci non trouvé",

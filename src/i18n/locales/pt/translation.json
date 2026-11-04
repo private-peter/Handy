@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Atalhos do Handy",
         "description": "Configure atalhos de teclado para iniciar a gravação de voz para texto",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Carregando atalhos...",
         "none": "Nenhum atalho configurado",
         "notFound": "Atalho não encontrado",

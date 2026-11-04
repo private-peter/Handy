@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Handy-genveje",
         "description": "Konfigurer tastaturgenveje til at udløse tale-til-tekst-optagelse",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Indlæser genveje...",
         "none": "Ingen genveje konfigureret",
         "notFound": "Genvej ikke fundet",

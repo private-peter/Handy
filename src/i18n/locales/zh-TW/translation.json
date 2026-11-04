@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Handy 快捷鍵",
         "description": "設定啟動語音轉文字錄製的鍵盤快捷鍵",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "載入快捷鍵中...",
         "none": "未設定快捷鍵",
         "notFound": "未找到快捷鍵",

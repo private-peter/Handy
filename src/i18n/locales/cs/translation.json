@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Zkratky Handy",
         "description": "Nastavte klávesové zkratky pro spuštění nahrávání řeči na text",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Načítám zkratky...",
         "none": "Žádné zkratky nejsou nastavené",
         "notFound": "Zkratka nenalezena",

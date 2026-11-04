@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Handy-Tastenkürzel",
         "description": "Tastenkürzel für die Sprachaufnahme konfigurieren",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Tastenkürzel werden geladen...",
         "none": "Keine Tastenkürzel konfiguriert",
         "notFound": "Tastenkürzel nicht gefunden",

@@ -621,6 +621,48 @@ pub async fn stop_portal_pasting() -> Result<(), String> {
     .map_err(|_| "Portal paste stop task failed".to_string())?
 }
 
+/// Read the desktop's assigned shortcut labels without changing preferences.
+#[tauri::command]
+#[specta::specta]
+pub fn get_portal_shortcuts(
+    app: AppHandle,
+) -> Result<std::collections::BTreeMap<String, String>, String> {
+    #[cfg(target_os = "linux")]
+    {
+        portal_impl::approved_shortcuts(&app)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = app;
+        Ok(Default::default())
+    }
+}
+
+/// Open the desktop's editor for the active portal shortcut session.
+#[tauri::command]
+#[specta::specta]
+pub async fn configure_portal_shortcuts(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let _configuration = lock_configuration();
+        if get_settings(&app).keyboard_implementation != KeyboardImplementation::Portal {
+            return Err("Select Desktop Portal before changing desktop shortcuts".into());
+        }
+        if crate::tray::dictation_in_progress(&app) {
+            return Err("Finish the current dictation before changing shortcuts".into());
+        }
+        #[cfg(target_os = "linux")]
+        {
+            portal_impl::configure_shortcuts(&app)
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            Err("Desktop Portal shortcuts require Linux".into())
+        }
+    })
+    .await
+    .map_err(|_| "Opening desktop shortcut settings failed".to_string())?
+}
+
 /// Get the current keyboard implementation
 #[tauri::command]
 #[specta::specta]

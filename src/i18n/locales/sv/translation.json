@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Handy-kortkommandon",
         "description": "Konfigurera kortkommandon för att starta tal-till-text-inspelning",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Laddar kortkommandon...",
         "none": "Inga kortkommandon konfigurerade",
         "notFound": "Kortkommando hittades inte",

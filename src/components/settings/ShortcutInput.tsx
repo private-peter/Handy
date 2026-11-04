@@ -1,5 +1,7 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { commands } from "@/bindings";
+import { notify } from "@/stores/noticeStore";
 import { formatKeyCombination } from "../../lib/utils/keyboard";
 import { ResetButton } from "../ui/ResetButton";
 import { SettingContainer } from "../ui/SettingContainer";
@@ -7,6 +9,7 @@ import { useSettings } from "../../hooks/useSettings";
 import { useOsType } from "../../hooks/useOsType";
 import { useShortcutCapture } from "../../hooks/useShortcutCapture";
 import { usePressAway } from "../../hooks/usePressAway";
+import { usePortalShortcuts } from "../../hooks/usePortalShortcuts";
 
 interface ShortcutInputProps {
   descriptionMode?: "inline" | "tooltip";
@@ -28,6 +31,25 @@ export const ShortcutInput: React.FC<ShortcutInputProps> = ({
   const { t } = useTranslation();
   const { getSetting, resetBinding, isUpdating, isLoading } = useSettings();
   const osType = useOsType();
+  const portal = getSetting("keyboard_implementation") === "portal";
+  const approved = usePortalShortcuts(portal);
+  const [openingSettings, setOpeningSettings] = useState(false);
+  const openDesktopSettings = async () => {
+    if (openingSettings) return;
+    setOpeningSettings(true);
+    try {
+      const result = await commands.configurePortalShortcuts();
+      if (result.status === "error") throw new Error(result.error);
+    } catch (error) {
+      notify({
+        title: t("settings.general.shortcut.errors.set", {
+          error: String(error),
+        }),
+      });
+    } finally {
+      setOpeningSettings(false);
+    }
+  };
   const { capturing, partial, start, cancel } = useShortcutCapture(
     shortcutId,
     osType,
@@ -99,7 +121,11 @@ export const ShortcutInput: React.FC<ShortcutInputProps> = ({
   return (
     <SettingContainer
       title={translatedName}
-      description={translatedDescription}
+      description={
+        portal
+          ? t("settings.general.shortcut.portalManaged")
+          : translatedDescription
+      }
       descriptionMode={descriptionMode}
       grouped={grouped}
       disabled={disabled}
@@ -116,18 +142,24 @@ export const ShortcutInput: React.FC<ShortcutInputProps> = ({
               : t("settings.general.shortcut.pressKeys")}
           </div>
         ) : (
-          <div
-            className="px-2 py-1 text-sm font-semibold bg-wash border border-line-strong hover:bg-logo-primary/10 rounded-md cursor-pointer hover:border-logo-primary"
-            onClick={start}
+          <button
+            type="button"
+            className="px-2 py-1 text-sm font-semibold bg-wash border border-line-strong hover:bg-logo-primary/10 rounded-md cursor-pointer hover:border-logo-primary disabled:opacity-50"
+            onClick={portal ? openDesktopSettings : start}
+            disabled={disabled || openingSettings}
           >
-            {formatKeyCombination(binding.current_binding, osType)}
-          </div>
+            {portal
+              ? approved[shortcutId] || t("settings.general.shortcut.none")
+              : formatKeyCombination(binding.current_binding, osType)}
+          </button>
         )}
-        <ResetButton
-          ariaLabel={t("common.resetSetting", { setting: translatedName })}
-          onClick={() => resetBinding(shortcutId)}
-          disabled={isUpdating(`binding_${shortcutId}`)}
-        />
+        {!portal && (
+          <ResetButton
+            ariaLabel={t("common.resetSetting", { setting: translatedName })}
+            onClick={() => resetBinding(shortcutId)}
+            disabled={isUpdating(`binding_${shortcutId}`)}
+          />
+        )}
       </div>
     </SettingContainer>
   );

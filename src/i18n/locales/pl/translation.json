@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Skróty Handy",
         "description": "Skonfiguruj skróty klawiaturowe do uruchamiania nagrywania mowy",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Wczytywanie skrótów...",
         "none": "Brak skonfigurowanych skrótów",
         "notFound": "Nie znaleziono skrótu",

@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Phím tắt Handy",
         "description": "Cấu hình phím tắt để kích hoạt ghi âm chuyển đổi giọng nói thành văn bản",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Đang tải phím tắt...",
         "none": "Chưa cấu hình phím tắt",
         "notFound": "Không tìm thấy phím tắt",

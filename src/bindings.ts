@@ -495,9 +495,25 @@ async stopPortalPasting() : Promise<Result<null, string>> {
     else return { status: "error", error: e as any };
 }
 },
-/**
- * Get the current keyboard implementation
- */
+/** Read the desktop's assigned shortcut labels without changing preferences. */
+async getPortalShortcuts() : Promise<Result<Partial<{ [key in string]: string }>, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("get_portal_shortcuts") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/** Open the desktop's editor for the active portal shortcut session. */
+async configurePortalShortcuts() : Promise<Result<null, string>> {
+    try {
+    return { status: "ok", data: await TAURI_INVOKE("configure_portal_shortcuts") };
+} catch (e) {
+    if(e instanceof Error) throw e;
+    else return { status: "error", error: e  as any };
+}
+},
+/** Get the current keyboard implementation. */
 async getKeyboardImplementation() : Promise<string> {
     return await TAURI_INVOKE("get_keyboard_implementation");
 },

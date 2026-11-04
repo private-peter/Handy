@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Dreceres del Handy",
         "description": "Configura les dreceres de teclat per iniciar l'enregistrament de veu per a la transcripció",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "S'estan carregant les dreceres...",
         "none": "No hi ha cap drecera configurada",
         "notFound": "No s'ha trobat la drecera",

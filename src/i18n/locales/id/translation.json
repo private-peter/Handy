@@ -332,6 +332,7 @@
       "shortcut": {
         "title": "Pintasan Handy",
         "description": "Atur pintasan keyboard untuk memulai perekaman ucapan-ke-teks",
+        "portalManaged": "Managed by your desktop. Click to change the assigned shortcut.",
         "loading": "Memuat pintasan...",
         "none": "Belum ada pintasan yang diatur",
         "notFound": "Pintasan tidak ditemukan",
