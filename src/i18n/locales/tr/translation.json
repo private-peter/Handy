@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Model yüklenemedi",
     "modelDownloadFailed": "İndirme başarısız oldu",
     "pasteFailedTitle": "Metin yapıştırılamadı",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Metin etkin uygulamaya yapıştırılamadı.",
     "postProcessFailedTitle": "Son işlem olmadan yapıştırıldı",
     "postProcessFailed": "Son işlem tamamlanmadı, bu yüzden metin olduğu gibi yapıştırıldı.",

@@ -83,7 +83,25 @@ pub fn init_shortcuts(app: &AppHandle) -> Result<(), String> {
 /// falling back to a backend with different security or activation behavior.
 fn initialize_portal(app: &AppHandle) -> Result<(), String> {
     #[cfg(target_os = "linux")]
-    let result = portal_impl::init_shortcuts(app);
+    let result = {
+        // Permission setup finishes before shortcuts become ready, so the first
+        // dictation cannot record into its consent window or lose paste focus.
+        let method = get_settings(app).paste_method;
+        if crate::utils::is_wayland() && crate::portal_input::automatic_setup_pending(method) {
+            if let Err(error) = setup_portal_pasting_inner(app, true) {
+                crate::notices::raise_without_overlay(
+                    app,
+                    crate::notices::Notice::new(
+                        crate::notices::NoticeCode::PasteSetupFailed,
+                        crate::notices::NoticeSource::Pasting,
+                    )
+                    .with_detail(error),
+                );
+            }
+        }
+        // Declining paste permission does not disable shortcut registration.
+        portal_impl::init_shortcuts(app)
+    };
     #[cfg(not(target_os = "linux"))]
     let result: Result<(), String> =
         Err("Desktop Portal shortcuts are only available on Linux".into());
@@ -508,6 +526,8 @@ fn change_keyboard_implementation_inner(
     #[cfg(target_os = "linux")]
     if current_impl == KeyboardImplementation::Portal && new_impl != current_impl {
         crate::portal_input::shutdown()?;
+        crate::portal_input::reset_automatic_setup();
+        crate::notices::clear(&app, crate::notices::NoticeSource::Pasting);
     }
 
     // Unregister all shortcuts from the current implementation
@@ -581,41 +601,59 @@ fn change_keyboard_implementation_inner(
 pub async fn setup_portal_pasting(app: AppHandle) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let _configuration = lock_configuration();
-        if get_settings(&app).keyboard_implementation != KeyboardImplementation::Portal {
-            return Err("Select Desktop Portal before setting up pasting".into());
-        }
-        #[cfg(target_os = "linux")]
-        {
-            if !crate::utils::is_wayland() {
-                return Err("Desktop Portal pasting requires a Wayland session".into());
-            }
-            let _recording_gate = PORTAL_PASTE_SETUP_GATE.try_lock().map_err(|_| {
-                "Finish the current recording before setting up pasting".to_string()
-            })?;
-            if crate::tray::dictation_in_progress(&app) {
-                return Err("Finish the current dictation before setting up pasting".into());
-            }
-            let _output_gate = crate::clipboard::lock_idle_output()?;
-            crate::portal_input::setup()
-        }
-        #[cfg(not(target_os = "linux"))]
-        Err("Desktop Portal pasting requires Linux".into())
+        setup_portal_pasting_inner(&app, false)
     })
     .await
     .map_err(|_| "Portal paste setup task failed".to_string())?
 }
 
+fn setup_portal_pasting_inner(app: &AppHandle, automatic: bool) -> Result<(), String> {
+    if get_settings(app).keyboard_implementation != KeyboardImplementation::Portal {
+        return Err("Select Desktop Portal before setting up pasting".into());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        if !crate::utils::is_wayland() {
+            return Err("Desktop Portal pasting requires a Wayland session".into());
+        }
+        let _recording_gate = PORTAL_PASTE_SETUP_GATE
+            .try_lock()
+            .map_err(|_| "Finish the current recording before setting up pasting".to_string())?;
+        if crate::tray::dictation_in_progress(app) {
+            return Err("Finish the current dictation before setting up pasting".into());
+        }
+        let _output_gate = crate::clipboard::lock_idle_output()?;
+        if automatic {
+            crate::portal_input::setup_automatically(get_settings(app).paste_method)?;
+        } else {
+            crate::portal_input::setup()?;
+        }
+        crate::notices::clear(app, crate::notices::NoticeSource::Pasting);
+        Ok(())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = automatic;
+        Err("Desktop Portal pasting requires Linux".into())
+    }
+}
+
 /// Revoke only this process's paste session; shortcut approval is separate.
 #[tauri::command]
 #[specta::specta]
-pub async fn stop_portal_pasting() -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(|| {
+pub async fn stop_portal_pasting(app: AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
         #[cfg(target_os = "linux")]
         {
-            crate::portal_input::shutdown()
+            crate::portal_input::shutdown()?;
+            crate::notices::clear(&app, crate::notices::NoticeSource::Pasting);
+            Ok(())
         }
         #[cfg(not(target_os = "linux"))]
-        Ok(())
+        {
+            let _ = app;
+            Ok(())
+        }
     })
     .await
     .map_err(|_| "Portal paste stop task failed".to_string())?

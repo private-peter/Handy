@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Failed to Load Model",
     "modelDownloadFailed": "Download failed",
     "pasteFailedTitle": "Failed to Paste Text",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Text could not be pasted into the active application.",
     "postProcessFailedTitle": "Pasted Without Post-Processing",
     "postProcessFailed": "Post Process didn't finish, so the transcript was pasted as is.",

@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Nie udało się załadować modelu",
     "modelDownloadFailed": "Pobieranie nie powiodło się",
     "pasteFailedTitle": "Nie udało się wkleić tekstu",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Nie można było wkleić tekstu do aktywnej aplikacji.",
     "postProcessFailedTitle": "Wklejono bez postprocesu",
     "postProcessFailed": "Postproces nie został ukończony, więc transkrypcja została wklejona bez zmian.",

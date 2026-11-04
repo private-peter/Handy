@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Misslyckades med att ladda modell",
     "modelDownloadFailed": "Nedladdningen misslyckades",
     "pasteFailedTitle": "Det gick inte att klistra in texten",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Texten kunde inte klistras in i det aktiva programmet.",
     "postProcessFailedTitle": "Inklistrat utan efterbearbetning",
     "postProcessFailed": "Efterbearbetningen slutfördes inte, så transkriptionen klistrades in som den är.",

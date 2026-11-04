@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Kunne ikke indlæse model",
     "modelDownloadFailed": "Download mislykkedes",
     "pasteFailedTitle": "Kunne ikke indsætte tekst",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Teksten kunne ikke indsættes i det aktive program.",
     "postProcessFailedTitle": "Indsat uden efterbehandling",
     "postProcessFailed": "Efterbehandlingen blev ikke færdig, så transskriptionen blev indsat, som den er.",

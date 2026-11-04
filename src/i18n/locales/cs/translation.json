@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Nepodařilo se načíst model",
     "modelDownloadFailed": "Stahování selhalo",
     "pasteFailedTitle": "Vložení textu se nezdařilo",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Text nebylo možné vložit do aktivní aplikace.",
     "postProcessFailedTitle": "Vloženo bez následného zpracování",
     "postProcessFailed": "Následné zpracování se nedokončilo, takže byl přepis vložen beze změn.",

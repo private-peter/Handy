@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Моделът не се зареди",
     "modelDownloadFailed": "Изтеглянето е неуспешно",
     "pasteFailedTitle": "Неуспешно поставяне на текст",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Текстът не можа да бъде поставен в активното приложение.",
     "postProcessFailedTitle": "Поставено без постобработка",
     "postProcessFailed": "Постобработката не завърши, затова транскрипцията беше поставена без промени.",

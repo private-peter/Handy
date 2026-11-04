@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Impossibile caricare il modello",
     "modelDownloadFailed": "Download non riuscito",
     "pasteFailedTitle": "Impossibile incollare il testo",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Non è stato possibile incollare il testo nell'applicazione attiva.",
     "postProcessFailedTitle": "Incollato senza post-elaborazione",
     "postProcessFailed": "La post-elaborazione non è terminata, quindi la trascrizione è stata incollata così com'è.",

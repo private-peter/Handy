@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Не удалось загрузить модель",
     "modelDownloadFailed": "Ошибка загрузки",
     "pasteFailedTitle": "Не удалось вставить текст",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Не удалось вставить текст в активное приложение.",
     "postProcessFailedTitle": "Вставлено без постобработки",
     "postProcessFailed": "Постобработка не завершилась, поэтому расшифровка вставлена как есть.",

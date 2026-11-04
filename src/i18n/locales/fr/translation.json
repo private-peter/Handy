@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Échec du chargement du modèle",
     "modelDownloadFailed": "Échec du téléchargement",
     "pasteFailedTitle": "Échec du collage du texte",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Le texte n'a pas pu être collé dans l'application active.",
     "postProcessFailedTitle": "Collé sans post-traitement",
     "postProcessFailed": "Le post-traitement n'a pas abouti, la transcription a donc été collée telle quelle.",

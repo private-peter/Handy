@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "加载模型失败",
     "modelDownloadFailed": "下载失败",
     "pasteFailedTitle": "粘贴文本失败",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "无法将文本粘贴到当前活动的应用程序中。",
     "postProcessFailedTitle": "已粘贴，未经后处理",
     "postProcessFailed": "后处理未完成，因此按原样粘贴转录内容。",

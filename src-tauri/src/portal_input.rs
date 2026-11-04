@@ -1,6 +1,6 @@
 //! Explicitly authorized, keyboard-only input through the Wayland desktop portal.
 //!
-//! Only `setup` may show consent. Output calls require an already approved live
+//! Only startup or explicit setup may show consent. Output calls require an approved live
 //! session and never fall back to X11, raw devices, or another input backend.
 //! The blocking entry points belong on workers, never the GTK/main thread.
 
@@ -35,6 +35,35 @@ const NOT_READY: &str =
 const CANCELLED: &str = "Native Wayland input was stopped. No further keys will be sent.";
 
 static WORKER: OnceLock<Result<Worker, String>> = OnceLock::new();
+static AUTOMATIC_SETUP: AutomaticSetup = AutomaticSetup::new();
+
+/// One automatic request per Portal activation. Cancellation and explicit Stop
+/// keep it suppressed; only leaving the backend resets this policy.
+struct AutomaticSetup(AtomicBool);
+
+impl AutomaticSetup {
+    const fn new() -> Self {
+        Self(AtomicBool::new(false))
+    }
+
+    fn pending(&self, method: PasteMethod) -> bool {
+        matches!(
+            method,
+            PasteMethod::CtrlV | PasteMethod::CtrlShiftV | PasteMethod::ShiftInsert
+        ) && !self.0.load(Ordering::SeqCst)
+    }
+
+    fn claim(&self, method: PasteMethod) -> bool {
+        self.pending(method) && !self.0.swap(true, Ordering::SeqCst)
+    }
+
+    fn suppress(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+    fn reset(&self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
 
 enum Operation {
     Setup,
@@ -91,12 +120,19 @@ impl Worker {
         // Snapshot before checking stopping. If shutdown races this call after
         // the check, the old generation still makes the actor reject it.
         let generation = self.generation.load(Ordering::SeqCst);
+        self.call_at_generation(operation, generation)
+    }
+
+    fn call_at_generation(&self, operation: Operation, generation: u64) -> Result<(), String> {
         let _guard = self.operation_lock.try_lock().map_err(|_| {
             "Native Wayland input is busy. Wait for setup or the current paste to finish."
                 .to_owned()
         })?;
         if self.stopping.load(Ordering::SeqCst) {
             return Err("Native Wayland input is stopping. Wait, then retry setup.".into());
+        }
+        if generation != self.generation.load(Ordering::SeqCst) {
+            return Err(CANCELLED.into());
         }
         if matches!(operation, Operation::Chord(_)) && !self.ready.load(Ordering::SeqCst) {
             return Err(NOT_READY.into());
@@ -128,10 +164,40 @@ fn worker() -> Result<&'static Worker, String> {
         .map_err(Clone::clone)
 }
 
-/// Ask for a keyboard-only, nonpersistent portal session. Only call this after
-/// the user explicitly chooses Set Up Pasting, on a blocking worker thread.
+/// Ask for a keyboard-only, nonpersistent portal session after an explicit
+/// Set Up Pasting request. Call on a blocking worker thread, with recording and
+/// output held idle until consent closes.
 pub fn setup() -> Result<(), String> {
+    AUTOMATIC_SETUP.suppress();
     worker()?.call(Operation::Setup)
+}
+
+pub fn automatic_setup_pending(method: PasteMethod) -> bool {
+    AUTOMATIC_SETUP.pending(method)
+}
+
+/// Request consent once at startup/backend activation, before shortcuts become
+/// ready. Stop can invalidate the request even before it reaches the worker.
+pub fn setup_automatically(method: PasteMethod) -> Result<(), String> {
+    if !AUTOMATIC_SETUP.pending(method) {
+        return Ok(());
+    }
+    let service = worker()?;
+    let generation = service.generation.load(Ordering::SeqCst);
+    if !AUTOMATIC_SETUP.claim(method) {
+        return Ok(());
+    }
+    let result = service.call_at_generation(Operation::Setup, generation);
+    // Stop or backend exit already canceled this automatic request; do not
+    // replace that deliberate action with a permission-error notice.
+    if generation != service.generation.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    result
+}
+
+pub fn reset_automatic_setup() {
+    AUTOMATIC_SETUP.reset();
 }
 
 /// Send an approved clipboard-paste chord without showing any permission UI.
@@ -160,6 +226,7 @@ pub fn send_submit(key: AutoSubmitKey) -> Result<(), String> {
 /// consent UI. Idempotent; does not initialize a worker or acquire permission.
 /// Wait for this on a blocking worker before reporting Stop Pasting complete.
 pub fn shutdown() -> Result<(), String> {
+    AUTOMATIC_SETUP.suppress();
     let Some(Ok(service)) = WORKER.get() else {
         return Ok(());
     };
@@ -506,6 +573,54 @@ async fn run_actor(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_setup_is_only_for_clipboard_methods_and_does_not_repeat() {
+        let policy = AutomaticSetup::new();
+        for method in [
+            PasteMethod::None,
+            PasteMethod::Direct,
+            PasteMethod::ExternalScript,
+        ] {
+            assert!(!policy.claim(method));
+        }
+        assert!(policy.claim(PasteMethod::ShiftInsert));
+        // Success, denial and timeout all consume this activation's attempt.
+        assert!(!policy.claim(PasteMethod::CtrlV));
+        assert!(!policy.claim(PasteMethod::CtrlShiftV));
+        policy.reset();
+        assert!(policy.claim(PasteMethod::CtrlShiftV));
+    }
+
+    #[test]
+    fn stop_before_worker_creation_suppresses_automatic_permission() {
+        let policy = AutomaticSetup::new();
+        policy.suppress();
+        assert!(!policy.pending(PasteMethod::ShiftInsert));
+        assert!(!policy.claim(PasteMethod::ShiftInsert));
+    }
+
+    #[test]
+    fn automatic_setup_with_pre_stop_generation_is_rejected_before_queueing() {
+        let (requests, mut receiver) = mpsc::unbounded_channel();
+        let (cancellation, _) = watch::channel(1);
+        let service = Worker {
+            requests,
+            cancellation,
+            generation: Arc::new(AtomicU64::new(1)),
+            ready: Arc::new(AtomicBool::new(false)),
+            stopping: AtomicBool::new(false),
+            operation_lock: Mutex::new(()),
+        };
+        assert_eq!(
+            service.call_at_generation(Operation::Setup, 0),
+            Err(CANCELLED.into())
+        );
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+    }
 
     #[test]
     fn clipboard_chords_use_keysyms_and_keep_modifiers_before_the_main_key() {

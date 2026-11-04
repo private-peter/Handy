@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Modell konnte nicht geladen werden",
     "modelDownloadFailed": "Download fehlgeschlagen",
     "pasteFailedTitle": "Text konnte nicht eingefügt werden",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Der Text konnte nicht in die aktive Anwendung eingefügt werden.",
     "postProcessFailedTitle": "Ohne Nachbearbeitung eingefügt",
     "postProcessFailed": "Die Nachbearbeitung wurde nicht abgeschlossen, daher wurde das Transkript unverändert eingefügt.",

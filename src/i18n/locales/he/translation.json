@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "טעינת המודל נכשלה",
     "modelDownloadFailed": "ההורדה נכשלה",
     "pasteFailedTitle": "ההדבקה נכשלה",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "לא ניתן היה להדביק את הטקסט ביישום הפעיל.",
     "postProcessFailedTitle": "הודבק ללא עיבוד משלים",
     "postProcessFailed": "העיבוד המשלים לא הסתיים, ולכן התמלול הודבק כפי שהוא.",

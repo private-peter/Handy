@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Model laden mislukt",
     "modelDownloadFailed": "Downloaden mislukt",
     "pasteFailedTitle": "Tekst plakken mislukt",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Tekst kon niet worden geplakt in de actieve applicatie.",
     "postProcessFailedTitle": "Geplakt zonder naverwerking",
     "postProcessFailed": "De naverwerking is niet voltooid, dus de transcriptie is ongewijzigd geplakt.",

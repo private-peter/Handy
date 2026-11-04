@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Error al cargar el modelo",
     "modelDownloadFailed": "Error en la descarga",
     "pasteFailedTitle": "Error al pegar el texto",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "No se pudo pegar el texto en la aplicación activa.",
     "postProcessFailedTitle": "Pegado sin post proceso",
     "postProcessFailed": "El post proceso no terminó, así que la transcripción se pegó tal cual.",

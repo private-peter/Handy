@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "मॉडल लोड नहीं हो सका",
     "modelDownloadFailed": "डाउनलोड विफल रहा",
     "pasteFailedTitle": "टेक्स्ट पेस्ट नहीं हो सका",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "खुले हुए ऐप्लिकेशन में टेक्स्ट पेस्ट नहीं किया जा सका.",
     "postProcessFailedTitle": "पोस्ट प्रोसेस के बिना पेस्ट किया गया",
     "postProcessFailed": "पोस्ट प्रोसेस पूरा नहीं हुआ, इसलिए ट्रांसक्रिप्ट जैसा था वैसा ही पेस्ट किया गया।",

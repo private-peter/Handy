@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "No s'ha pogut carregar el model",
     "modelDownloadFailed": "Ha fallat la baixada",
     "pasteFailedTitle": "No s'ha pogut enganxar el text",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "No s'ha pogut enganxar el text a l'aplicació activa.",
     "postProcessFailedTitle": "Enganxat sense postprocessament",
     "postProcessFailed": "El postprocessament no ha acabat, així que la transcripció s'ha enganxat tal qual.",

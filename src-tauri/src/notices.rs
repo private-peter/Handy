@@ -35,6 +35,7 @@ pub enum NoticeSource {
     File,
     Model,
     Shortcuts,
+    Pasting,
 }
 
 /// The frontend maps each code to its text in `src/lib/notices.ts`.
@@ -42,6 +43,7 @@ pub enum NoticeSource {
 pub enum NoticeCode {
     TranscriptionFailed,
     PasteFailed,
+    PasteSetupFailed,
     NoMicrophone,
     MicPermissionDenied,
     RecordingFailed,
@@ -57,6 +59,7 @@ impl NoticeCode {
         match self {
             Self::TranscriptionFailed
             | Self::PasteFailed
+            | Self::PasteSetupFailed
             | Self::NoMicrophone
             | Self::MicPermissionDenied
             | Self::RecordingFailed
@@ -72,6 +75,7 @@ impl NoticeCode {
         match self {
             Self::TranscriptionFailed => &strings.transcription_failed_title,
             Self::PasteFailed => &strings.paste_failed_title,
+            Self::PasteSetupFailed => &strings.paste_setup_failed_title,
             Self::NoMicrophone => &strings.no_input_device_title,
             Self::MicPermissionDenied => &strings.mic_permission_denied_title,
             Self::RecordingFailed => &strings.recording_failed_title,

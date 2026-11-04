@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Gagal Memuat Model",
     "modelDownloadFailed": "Unduhan gagal",
     "pasteFailedTitle": "Gagal Menempelkan Teks",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Teks tidak dapat ditempelkan ke aplikasi aktif.",
     "postProcessFailedTitle": "Ditempel Tanpa Pascaproses",
     "postProcessFailed": "Pascaproses tidak selesai, jadi transkrip ditempelkan apa adanya.",

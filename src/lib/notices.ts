@@ -13,6 +13,10 @@ const NOTICE_DISPLAY: Record<NoticeCode, NoticeDisplay> = {
   TranscriptionFailed: {
     title: "errors.transcriptionFailedTitle",
   },
+  PasteSetupFailed: {
+    title: "errors.pasteSetupFailedTitle",
+    explanation: (t) => t("errors.pasteSetupFailed"),
+  },
   PasteFailed: {
     title: "errors.pasteFailedTitle",
     explanation: (t) => t("errors.pasteFailed"),

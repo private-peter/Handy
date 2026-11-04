@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "Không thể tải mô hình",
     "modelDownloadFailed": "Tải xuống thất bại",
     "pasteFailedTitle": "Không thể dán văn bản",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "Không thể dán văn bản vào ứng dụng đang hoạt động.",
     "postProcessFailedTitle": "Đã dán không qua xử lý sau",
     "postProcessFailed": "Xử lý sau chưa hoàn tất nên bản chép lời được dán nguyên trạng.",

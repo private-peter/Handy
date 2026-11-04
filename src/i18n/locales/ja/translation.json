@@ -956,6 +956,8 @@
     "modelLoadFailedTitle": "モデルの読み込みに失敗しました",
     "modelDownloadFailed": "ダウンロードに失敗しました",
     "pasteFailedTitle": "テキストの貼り付けに失敗しました",
+    "pasteSetupFailedTitle": "Pasting Permission Needed",
+    "pasteSetupFailed": "Automatic pasting needs keyboard-control permission. Choose Set Up Pasting in Advanced settings to try again.",
     "pasteFailed": "アクティブなアプリにテキストを貼り付けられませんでした。",
     "postProcessFailedTitle": "後処理なしで貼り付けました",
     "postProcessFailed": "後処理が完了しなかったため、文字起こしをそのまま貼り付けました。",
