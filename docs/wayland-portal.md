@@ -30,6 +30,12 @@ GNOME uses its sharing/control indicator for input-only RemoteDesktop sessions a
 
 The portal authorizes keyboard injection into the desktop session while the approved session is active. This is a meaningful permission even without screen capture or raw keyboard-read access. Shortcut approval alone does not grant paste permission. No input-device group, udev rule, privileged helper, or host remapping service is installed by this backend.
 
+## Shift+Insert in terminals and other applications
+
+On Linux, Shift+Insert publishes the transcription to both CLIPBOARD and PRIMARY. VTE terminals use PRIMARY for this shortcut, while other applications may use CLIPBOARD. PRIMARY uses GTK's X11 selection bridge, including under GNOME Wayland, because a background native Wayland client cannot claim PRIMARY. Xwayland must be available. Keyboard injection still uses the approved portal session; this clipboard bridge grants no raw keyboard access.
+
+As in the existing X11 implementation, the previous PRIMARY snapshot is text-only. Restoration waits at least 250 ms after key delivery and skips PRIMARY if its text has changed. Non-text PRIMARY contents are not preserved. Clipboard cleanup stays serialized with the paste and also runs after an injection failure. Select **Shift+Insert** as Paste Method to use this behavior.
+
 ## Returning to a standard build
 
 Before reopening a build that does not support this backend, choose **Tauri Global Shortcut** or **None** in the portal build and quit it. Older builds do not understand the persisted `portal` value. Restore a profile backup only while Handy is closed.

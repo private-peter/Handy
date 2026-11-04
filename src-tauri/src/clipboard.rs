@@ -68,6 +68,119 @@ fn write_text_to_clipboard(app_handle: &AppHandle, text: &str) -> Result<(), Str
         .map_err(|e| format!("Failed to write to clipboard: {}", e))
 }
 
+// VTE terminals read PRIMARY for Shift+Insert; GUI text widgets commonly read
+// CLIPBOARD. Keep the original fork's text-only PRIMARY snapshot semantics.
+#[cfg(target_os = "linux")]
+struct PrimaryPasteRestore {
+    previous_text: Option<String>,
+    pasted_text: String,
+}
+
+#[cfg(target_os = "linux")]
+fn mirrors_primary(paste_method: &PasteMethod) -> bool {
+    *paste_method == PasteMethod::ShiftInsert
+}
+
+/// Called only on the GTK main thread. Use X11's selection bridge even when
+/// Handy's windows are native Wayland: Mutter rejects background native
+/// Wayland PRIMARY owners. This does not change GTK's default display.
+#[cfg(target_os = "linux")]
+fn primary_clipboard_on_main_thread() -> Result<gtk::Clipboard, String> {
+    use gtk::glib::prelude::ObjectExt;
+    thread_local! {
+        static DISPLAY: std::cell::RefCell<Option<gtk::gdk::Display>> = const {
+            std::cell::RefCell::new(None)
+        };
+    }
+    DISPLAY.with(|cached| {
+        if let Some(display) = cached
+            .borrow()
+            .as_ref()
+            .filter(|display| !display.is_closed())
+        {
+            return Ok(gtk::Clipboard::for_display(
+                display,
+                &gtk::gdk::SELECTION_PRIMARY,
+            ));
+        }
+        let display = gtk::gdk::Display::default()
+            .filter(|display| display.type_().name() == "GdkX11Display")
+            .or_else(|| {
+                std::env::var("DISPLAY")
+                    .ok()
+                    .and_then(|name| gtk::gdk::Display::open(&name))
+            })
+            .filter(|display| display.type_().name() == "GdkX11Display")
+            .ok_or("Shift+Insert requires the X11 clipboard bridge (Xwayland on Wayland)")?;
+        let clipboard = gtk::Clipboard::for_display(&display, &gtk::gdk::SELECTION_PRIMARY);
+        *cached.borrow_mut() = Some(display);
+        info!("Using the X11 PRIMARY clipboard bridge for Shift+Insert");
+        Ok(clipboard)
+    })
+}
+
+/// Paste runs on a worker; GTK objects stay on the main thread. Only owned text
+/// snapshots cross this channel. The cached display keeps the selection alive.
+#[cfg(target_os = "linux")]
+fn with_primary_clipboard<T: Send + 'static>(
+    app_handle: &AppHandle,
+    f: impl FnOnce(gtk::Clipboard) -> T + Send + 'static,
+) -> Result<T, String> {
+    let (tx, rx) = mpsc::sync_channel(1);
+    app_handle
+        .run_on_main_thread(move || {
+            let _ = tx.send(primary_clipboard_on_main_thread().map(f));
+        })
+        .map_err(|e| format!("Failed to access PRIMARY on the main thread: {e}"))?;
+    rx.recv()
+        .map_err(|_| "Main thread dropped the PRIMARY clipboard request".to_string())?
+}
+
+#[cfg(target_os = "linux")]
+fn prepare_primary_paste(
+    text: &str,
+    paste_method: &PasteMethod,
+    app_handle: &AppHandle,
+) -> Result<Option<PrimaryPasteRestore>, String> {
+    if !mirrors_primary(paste_method) {
+        return Ok(None);
+    }
+    let pasted_text = text.to_owned();
+    with_primary_clipboard(app_handle, move |primary| {
+        let previous_text = primary.wait_for_text().map(|text| text.to_string());
+        primary.set_text(&pasted_text);
+        Some(PrimaryPasteRestore {
+            previous_text,
+            pasted_text,
+        })
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn primary_is_unchanged(paste: &PrimaryPasteRestore, current: Option<&str>) -> bool {
+    current == Some(paste.pasted_text.as_str())
+}
+
+#[cfg(target_os = "linux")]
+fn restore_primary_if_unchanged(
+    app_handle: &AppHandle,
+    paste: PrimaryPasteRestore,
+) -> Result<(), String> {
+    with_primary_clipboard(app_handle, move |primary| {
+        let current_text = primary.wait_for_text().map(|text| text.to_string());
+        if !primary_is_unchanged(&paste, current_text.as_deref()) {
+            info!("PRIMARY changed during paste; leaving it untouched");
+            return;
+        }
+        if let Some(previous_text) = paste.previous_text {
+            primary.set_text(&previous_text);
+        } else {
+            // As in the original fork, non-text PRIMARY contents are not saved.
+            primary.clear();
+        }
+    })
+}
+
 fn finish_clipboard_paste(
     paste_result: Result<(), String>,
     paste_delay_after_ms: u64,
@@ -98,14 +211,17 @@ fn paste_via_clipboard(
         None
     };
 
-    // Write text to clipboard first
-    write_text_to_clipboard(app_handle, text)?;
+    // Snapshot and publish PRIMARY before changing CLIPBOARD. The whole paste,
+    // including both restorations, remains inside PASTE_LOCK.
+    #[cfg(target_os = "linux")]
+    let primary_paste = prepare_primary_paste(text, paste_method, app_handle)?;
 
-    std::thread::sleep(Duration::from_millis(paste_delay_ms));
-
-    // Capture key injection errors so the original clipboard is restored before
-    // propagating them to the caller.
+    // Capture clipboard-write and key-injection errors so PRIMARY is restored
+    // even if the regular clipboard write fails before any key is sent.
     let paste_result = (|| -> Result<(), String> {
+        write_text_to_clipboard(app_handle, text)?;
+        std::thread::sleep(Duration::from_millis(paste_delay_ms));
+
         // Send paste key combo
         #[cfg(target_os = "linux")]
         let key_combo_sent = if portal_input_enabled {
@@ -136,6 +252,14 @@ fn paste_via_clipboard(
         Ok(())
     })();
 
+    // PRIMARY requests are asynchronous. Give the target at least the original
+    // fork's 250ms grace period, without a detached restore overlapping a paste.
+    #[cfg(target_os = "linux")]
+    let paste_delay_after_ms = if primary_paste.is_some() {
+        paste_delay_after_ms.max(250)
+    } else {
+        paste_delay_after_ms
+    };
     finish_clipboard_paste(paste_result, paste_delay_after_ms, || {
         // Restore original clipboard content even when key injection failed.
         // Text takes priority so this path stays identical to the previous behavior;
@@ -149,6 +273,12 @@ fn paste_via_clipboard(
         } else {
             // Nothing was there to begin with — don't leave the transcription behind.
             let _ = clipboard.clear();
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(paste) = primary_paste {
+            if let Err(error) = restore_primary_if_unchanged(app_handle, paste) {
+                log::warn!("Could not restore PRIMARY after paste: {error}");
+            }
         }
     })
 }
@@ -1055,6 +1185,33 @@ e.g. 28:1 28:0 means pressing on the Enter button on a standard US keyboard.
             dotool_type_script("first line\nkey super+l\r\nclick left\n"),
             "type first line\nkey enter\ntype key super+l\nkey enter\ntype click left\nkey enter\n"
         );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn only_shift_insert_mirrors_primary() {
+        assert!(mirrors_primary(&PasteMethod::ShiftInsert));
+        for method in [
+            PasteMethod::CtrlV,
+            PasteMethod::CtrlShiftV,
+            PasteMethod::Direct,
+            PasteMethod::None,
+            PasteMethod::ExternalScript,
+        ] {
+            assert!(!mirrors_primary(&method));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn primary_restore_preserves_a_replacement_selection() {
+        let paste = PrimaryPasteRestore {
+            previous_text: Some("previous selection".into()),
+            pasted_text: "transcript".into(),
+        };
+        assert!(primary_is_unchanged(&paste, Some("transcript")));
+        assert!(!primary_is_unchanged(&paste, Some("new selection")));
+        assert!(!primary_is_unchanged(&paste, None));
     }
 
     #[test]
